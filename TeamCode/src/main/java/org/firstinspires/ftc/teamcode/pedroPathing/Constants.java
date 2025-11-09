@@ -17,12 +17,12 @@ import java.util.function.ToDoubleBiFunction;
 
 public class Constants {
     public static FollowerConstants followerConstants = new FollowerConstants()
-            .mass(5)//TODO: robot weight in KGs
-            .forwardZeroPowerAcceleration(0) //TODO test forwardzeropoweraccelerationtuner
-            .lateralZeroPowerAcceleration(0) //TODO test lateralzeropoweraccelerationtuner
-            .translationalPIDFCoefficients(new PIDFCoefficients(0.1, 0, 0.01, 0)) //TODO test panels translation
-            .headingPIDFCoefficients(new PIDFCoefficients(0.1, 0, 0.01, 0)) //TODO test panels heading
-            .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.1,0.0,0.01,0.6,0.0)) //TODO test panels drive
+            .mass(9)
+            .forwardZeroPowerAcceleration(-53.4) //TODO test forwardzeropoweraccelerationtuner
+            .lateralZeroPowerAcceleration(-74.7) //TODO test lateralzeropoweraccelerationtuner
+            .translationalPIDFCoefficients(new PIDFCoefficients(0.08, 0, 0.01, 0)) //TODO test panels translation
+            .headingPIDFCoefficients(new PIDFCoefficients(1.2, 0, 0.01, 0)) //TODO test panels heading
+            .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.003,0.0,0.005,0.6,0.0)) //TODO test panels drive
             .centripetalScaling(0.005); //TODO test panels centripetal
     public static PathConstraints pathConstraints = new PathConstraints(0.99, 100, 1, 1);
 
@@ -32,32 +32,31 @@ public class Constants {
             .rightRearMotorName("rightBackDrive")
             .leftRearMotorName("leftBackDrive")
             .leftFrontMotorName("leftFrontDrive")
-            .leftFrontMotorDirection(DcMotorSimple.Direction.REVERSE)
-            .leftRearMotorDirection(DcMotorSimple.Direction.REVERSE)
-            .rightFrontMotorDirection(DcMotorSimple.Direction.FORWARD)
-            .rightRearMotorDirection(DcMotorSimple.Direction.FORWARD)
+            .leftFrontMotorDirection(DcMotorSimple.Direction.FORWARD)
+            .leftRearMotorDirection(DcMotorSimple.Direction.FORWARD)
+            .rightFrontMotorDirection(DcMotorSimple.Direction.REVERSE)
+            .rightRearMotorDirection(DcMotorSimple.Direction.REVERSE)
 
-            .xVelocity(0) //TODO test forwardvelocitytuner
-            .yVelocity(0); //TODO test lateralvelocitytuner
+            .xVelocity(56.2) //TODO test forwardvelocitytuner
+            .yVelocity(40.1); //TODO test lateralvelocitytuner
 
     public static TwoWheelConstants localizerConstants = new TwoWheelConstants()
-            .forwardEncoder_HardwareMapName("leftFront")//TODO: Make sure to replace the hardware map names with the actual names of the motor port they are plugged into
-            .strafeEncoder_HardwareMapName("rightRear")//TODO: Make sure to replace the hardware map names with the actual names of the motor port they are plugged into
+            .forwardEncoder_HardwareMapName("leftFrontDrive")
+            .strafeEncoder_HardwareMapName("rightBackDrive")
+            .forwardPodY(7.7)//TDO: measure offset from center to pod in inches
+            .strafePodX(-6.5)//TDO: measure offset from center to pod in inches
 
-            .forwardPodY(3)//TODO: measure offset from center to pod in inches
-            .strafePodX(3)//TODO: measure offset from center to pod in inches
+            //.forwardEncoderDirection(Encoder.REVERSE)//TDO
+            //.strafeEncoderDirection(Encoder.REVERSE)//TDO
 
-            .forwardEncoderDirection(Encoder.REVERSE)//TODO
-            .strafeEncoderDirection(Encoder.REVERSE)//TODO
-
-            .forwardTicksToInches(0)//TODO: Tune
-            .strafeTicksToInches(0)//TODO: Tune
+            .forwardTicksToInches(0.001946303932)//TDO: Tune
+            .strafeTicksToInches(0.001943990049)//TDO: Tune
 
             .IMU_HardwareMapName("imu")
             .IMU_Orientation(
                     new RevHubOrientationOnRobot(
-                            RevHubOrientationOnRobot.LogoFacingDirection.UP, //TODO
-                            RevHubOrientationOnRobot.UsbFacingDirection.LEFT //TODO
+                            RevHubOrientationOnRobot.LogoFacingDirection.LEFT, //TDO
+                            RevHubOrientationOnRobot.UsbFacingDirection.UP //TDO
                     )
             );
 
