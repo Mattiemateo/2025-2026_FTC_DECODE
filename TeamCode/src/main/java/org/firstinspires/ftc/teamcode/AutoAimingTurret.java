@@ -8,7 +8,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import java.util.List;
 
 @TeleOp(name = "Auto-aiming turret", group = "Iterative Opmode")
-public class LimelightAutoAim extends OpMode {
+public class AutoAimingTurret extends OpMode {
 
     // Hardware
     private DcMotorEx turretMotor;
@@ -31,6 +31,9 @@ public class LimelightAutoAim extends OpMode {
     private static final double MAX_POWER = 0.4; // Maximum turret speed
     private static final double TARGET_LOST_TIMEOUT = 0.5; // seconds before resetting
 
+    // Direction tuning - CHANGE THIS IF TURRET MOVES WRONG WAY
+    private static final boolean INVERT_MOTOR = false; // Set to true if it moves backwards
+
     private boolean targetWasVisible = false;
 
     @Override
@@ -47,6 +50,7 @@ public class LimelightAutoAim extends OpMode {
             targetLostTimer.reset();
 
             telemetry.addData("Status", "Initialized");
+            telemetry.addData("Motor Inverted", INVERT_MOTOR);
         } catch (Exception e) {
             telemetry.addData("Init Error", e.getMessage());
         }
@@ -82,7 +86,7 @@ public class LimelightAutoAim extends OpMode {
                     if (dt > 1.0) dt = 1.0; // Cap dt if loop was slow
 
                     // Calculate error
-                    double error = targetX - tx;
+                    double error = tx - targetX;
 
                     // PID calculations
                     integral += error * dt;
@@ -115,6 +119,11 @@ public class LimelightAutoAim extends OpMode {
                         Math.min(MAX_POWER, pidOutput)
                     );
 
+                    // Apply inversion if needed
+                    if (INVERT_MOTOR) {
+                        motorPower = -motorPower;
+                    }
+
                     // Safety check: ensure motor power is finite
                     if (!Double.isFinite(motorPower)) {
                         motorPower = 0;
@@ -127,11 +136,20 @@ public class LimelightAutoAim extends OpMode {
 
                     // Telemetry for tuning
                     telemetry.addData("Status", "LOCKED ON");
-                    telemetry.addData("Target Visible", "Yes");
                     telemetry.addData("TX (degrees)", "%.2f", tx);
+                    telemetry.addData(
+                        "Target Position",
+                        tx > 0 ? "RIGHT" : (tx < 0 ? "LEFT" : "CENTER")
+                    );
                     telemetry.addData("Error", "%.2f", error);
                     telemetry.addData("PID Output", "%.3f", pidOutput);
                     telemetry.addData("Motor Power", "%.3f", motorPower);
+                    telemetry.addData(
+                        "Motor Direction",
+                        motorPower > 0
+                            ? "POSITIVE"
+                            : (motorPower < 0 ? "NEGATIVE" : "STOPPED")
+                    );
                     telemetry.addData("Tag ID", fiducial.getFiducialId());
                     telemetry.addData("# Tags Detected", fiducials.size());
                 } else {
