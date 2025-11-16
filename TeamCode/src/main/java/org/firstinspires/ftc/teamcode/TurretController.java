@@ -9,9 +9,9 @@ public class TurretController {
     private DcMotorEx turretMotor;
 
     // PID Constants
-    private double kP = 0.275;
-    private double kI = 0.0;
-    private double kD = 0.0002;
+    private double kP = 0.015;
+    private double kI = 0.0001;
+    private double kD = 0.002;
 
     // PID Variables
     private double integralSum = 0;
@@ -21,15 +21,16 @@ public class TurretController {
     // Turret Configuration
     // 28 ticks/rev * 20:1 planetary * (95/28) gear reduction = 1900 ticks/rev
     private static final double TICKS_PER_DEGREE = (28 * 20 * 95.0 / 28.0) / 360.0;
-    private static final double MAX_POWER = 0.3;
-    private static final double TOLERANCE = 2.0; // degrees
+    private static final double MIN_POWER = 0.05;
+    private static final double MAX_POWER = 0.4;
+    private static final double TOLERANCE = 1.5; // degrees
 
     private double targetAngle = 0;
 
     public void init(HardwareMap hardwareMap) {
         turretMotor = hardwareMap.get(DcMotorEx.class, "aim");// port 1
-        turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+//        turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+//        turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         timer.reset();
     }
@@ -50,7 +51,7 @@ public class TurretController {
 
         // Calculate PID terms
         integralSum += error * deltaTime;
-        double derivative = (error - lastError) / deltaTime;
+        double derivative = (deltaTime > 0) ? (error - lastError) / deltaTime : 0;
         double power = (kP * error) + (kI * integralSum) + (kD * derivative);
 
         // Clamp power to safe limits
@@ -58,6 +59,8 @@ public class TurretController {
 
         turretMotor.setPower(power);
         lastError = error;
+
+
     }
 
     /**
