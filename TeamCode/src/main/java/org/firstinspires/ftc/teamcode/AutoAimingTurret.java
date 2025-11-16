@@ -7,7 +7,7 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import java.util.List;
 
-@TeleOp(name = "Limelight Auto-Aim", group = "Iterative Opmode")
+@TeleOp(name = "Auto-aiming turret", group = "Iterative Opmode")
 public class LimelightAutoAim extends OpMode {
 
     // Hardware
