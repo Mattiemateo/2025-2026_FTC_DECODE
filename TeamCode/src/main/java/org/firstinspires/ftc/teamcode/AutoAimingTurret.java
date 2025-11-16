@@ -2,8 +2,10 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
+import java.util.List;
 
 @TeleOp(name = "Limelight Auto-Aim", group = "Iterative Opmode")
 public class LimelightAutoAim extends OpMode {
@@ -21,100 +23,173 @@ public class LimelightAutoAim extends OpMode {
     private double integral = 0.0;
     private double lastError = 0.0;
     private ElapsedTime timer = new ElapsedTime();
+    private ElapsedTime targetLostTimer = new ElapsedTime();
 
     // Deadband and limits
     private static final double POSITION_TOLERANCE = 1.5; // degrees
     private static final double MIN_POWER = 0.05; // Minimum power to overcome friction
     private static final double MAX_POWER = 0.4; // Maximum turret speed
+    private static final double TARGET_LOST_TIMEOUT = 0.5; // seconds before resetting
+
+    private boolean targetWasVisible = false;
 
     @Override
     public void init() {
-        turretMotor = hardwareMap.get(DcMotorEx.class, "turretMotor");
-        turretMotor.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
+        try {
+            turretMotor = hardwareMap.get(DcMotorEx.class, "aim");
+            turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
-        limelight = hardwareMap.get(Limelight3A.class, "limelight");
-        limelight.pipelineSwitch(0); // Use your AprilTag pipeline
-        limelight.start();
+            limelight = hardwareMap.get(Limelight3A.class, "limelight");
+            limelight.pipelineSwitch(0); // Use your AprilTag pipeline
+            limelight.start();
 
-        timer.reset();
+            timer.reset();
+            targetLostTimer.reset();
+
+            telemetry.addData("Status", "Initialized");
+        } catch (Exception e) {
+            telemetry.addData("Init Error", e.getMessage());
+        }
     }
 
     @Override
     public void loop() {
-        LLResult result = limelight.getLatestResult();
+        try {
+            LLResult result = limelight.getLatestResult();
 
-        if (result != null && result.isValid()) {
-            // Get horizontal offset from center (tx)
-            double tx = result.getTx();
+            // Check if we have a valid result with fiducial data
+            if (result != null && result.isValid()) {
+                List<LLResultTypes.FiducialResult> fiducials =
+                    result.getFiducialResults();
 
-            // Calculate time since last update
-            double dt = timer.seconds();
-            timer.reset();
+                if (fiducials != null && !fiducials.isEmpty()) {
+                    // Target found!
+                    targetWasVisible = true;
+                    targetLostTimer.reset();
 
-            // Calculate error
-            double error = targetX - tx; // Negative tx means target is left
+                    // Get the first (closest/best) fiducial
+                    LLResultTypes.FiducialResult fiducial = fiducials.get(0);
 
-            // PID calculations
-            integral += error * dt;
+                    // Get horizontal offset from center (tx)
+                    double tx = fiducial.getTargetXDegrees();
 
-            // Anti-windup: prevent integral from getting too large
-            integral = Math.max(-50, Math.min(50, integral));
+                    // Calculate time since last update
+                    double dt = timer.seconds();
+                    timer.reset();
 
-            double derivative = (dt > 0) ? (error - lastError) / dt : 0;
+                    // Prevent division by zero or huge derivatives
+                    if (dt < 0.001) dt = 0.001;
+                    if (dt > 1.0) dt = 1.0; // Cap dt if loop was slow
 
-            // Calculate PID output
-            double pidOutput =
-                (kP * error) + (kI * integral) + (kD * derivative);
+                    // Calculate error
+                    double error = targetX - tx;
 
-            // Apply deadband - stop if close enough
-            if (Math.abs(error) < POSITION_TOLERANCE) {
-                pidOutput = 0;
-                integral = 0; // Reset integral when on target
-            }
+                    // PID calculations
+                    integral += error * dt;
 
-            // Apply minimum power if not zero (overcome static friction)
-            if (pidOutput != 0) {
-                if (Math.abs(pidOutput) < MIN_POWER) {
-                    pidOutput = MIN_POWER * Math.signum(pidOutput);
+                    // Anti-windup: prevent integral from getting too large
+                    integral = Math.max(-50, Math.min(50, integral));
+
+                    double derivative = (error - lastError) / dt;
+
+                    // Calculate PID output
+                    double pidOutput =
+                        (kP * error) + (kI * integral) + (kD * derivative);
+
+                    // Apply deadband - stop if close enough
+                    if (Math.abs(error) < POSITION_TOLERANCE) {
+                        pidOutput = 0;
+                        integral = 0; // Reset integral when on target
+                    }
+
+                    // Apply minimum power if not zero (overcome static friction)
+                    if (pidOutput != 0) {
+                        if (Math.abs(pidOutput) < MIN_POWER) {
+                            pidOutput = MIN_POWER * Math.signum(pidOutput);
+                        }
+                    }
+
+                    // Clamp output to max power
+                    double motorPower = Math.max(
+                        -MAX_POWER,
+                        Math.min(MAX_POWER, pidOutput)
+                    );
+
+                    // Safety check: ensure motor power is finite
+                    if (!Double.isFinite(motorPower)) {
+                        motorPower = 0;
+                        resetPID();
+                    }
+
+                    turretMotor.setPower(motorPower);
+
+                    lastError = error;
+
+                    // Telemetry for tuning
+                    telemetry.addData("Status", "LOCKED ON");
+                    telemetry.addData("Target Visible", "Yes");
+                    telemetry.addData("TX (degrees)", "%.2f", tx);
+                    telemetry.addData("Error", "%.2f", error);
+                    telemetry.addData("PID Output", "%.3f", pidOutput);
+                    telemetry.addData("Motor Power", "%.3f", motorPower);
+                    telemetry.addData("Tag ID", fiducial.getFiducialId());
+                    telemetry.addData("# Tags Detected", fiducials.size());
+                } else {
+                    // Result valid but no fiducials detected
+                    handleNoTarget();
                 }
+            } else {
+                // No valid result
+                handleNoTarget();
             }
-
-            // Clamp output to max power
-            double motorPower = Math.max(
-                -MAX_POWER,
-                Math.min(MAX_POWER, pidOutput)
-            );
-
-            turretMotor.setPower(motorPower);
-
-            lastError = error;
-
-            // Telemetry for tuning
-            telemetry.addData("Target Visible", "Yes");
-            telemetry.addData("TX (degrees)", "%.2f", tx);
-            telemetry.addData("Error", "%.2f", error);
-            telemetry.addData("PID Output", "%.3f", pidOutput);
-            telemetry.addData("Motor Power", "%.3f", motorPower);
-            telemetry.addData(
-                "Tag ID",
-                result.getFiducialResults().get(0).getFiducialId()
-            );
-        } else {
-            // No target found - stop and reset
-            turretMotor.setPower(0);
-            integral = 0;
-            lastError = 0;
-
-            telemetry.addData("Target Visible", "No");
-            telemetry.addData("Status", "Searching...");
+        } catch (Exception e) {
+            // Catch any errors to prevent crash
+            telemetry.addData("Error", e.getMessage());
+            telemetry.addData("Error Type", e.getClass().getSimpleName());
+            stopTurret();
         }
 
         telemetry.update();
     }
 
+    private void handleNoTarget() {
+        // Target lost - decide what to do
+        if (
+            targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT
+        ) {
+            // Recently lost target, maintain last power briefly (coast)
+            telemetry.addData("Status", "TRACKING LOST - Coasting");
+            telemetry.addData("Time Lost", "%.2f s", targetLostTimer.seconds());
+        } else {
+            // Target lost for too long - stop and reset
+            stopTurret();
+            telemetry.addData("Status", "SEARCHING");
+            telemetry.addData("Target Visible", "No");
+        }
+    }
+
+    private void stopTurret() {
+        turretMotor.setPower(0);
+        resetPID();
+        targetWasVisible = false;
+    }
+
+    private void resetPID() {
+        integral = 0;
+        lastError = 0;
+    }
+
     @Override
     public void stop() {
-        turretMotor.setPower(0);
-        limelight.stop();
+        try {
+            if (turretMotor != null) {
+                turretMotor.setPower(0);
+            }
+            if (limelight != null) {
+                limelight.stop();
+            }
+        } catch (Exception e) {
+            // Fail silently on stop
+        }
     }
 }
