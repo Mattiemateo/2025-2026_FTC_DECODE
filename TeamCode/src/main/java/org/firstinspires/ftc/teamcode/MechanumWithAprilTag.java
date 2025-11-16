@@ -3,6 +3,7 @@ package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
 
 @TeleOp
@@ -10,6 +11,7 @@ public class MechanumWithAprilTag extends LinearOpMode {
     private DcMotor flywheel;
     private DcMotor intake;
     private Servo hood;
+    private Servo flipper; //port 5
     private DcMotor leftFrontDrive;
     private DcMotor rightFrontDrive;
     private DcMotor leftBackDrive;
@@ -20,7 +22,8 @@ public class MechanumWithAprilTag extends LinearOpMode {
 
     double hoodpos = 0;
     boolean autoTrackEnabled = false;
-    double smootheningFactor = 0.4;
+    boolean reverseIntake = false;
+    //double smootheningFactor = 0.3;
 
     @Override
     public void runOpMode() {
@@ -33,6 +36,7 @@ public class MechanumWithAprilTag extends LinearOpMode {
         intake = hardwareMap.get(DcMotor.class, "intake");
         hood = hardwareMap.get(Servo.class, "hood");
         flywheel = hardwareMap.get(DcMotor.class, "flywheel");
+        flipper = hardwareMap.get(Servo.class, "flipper");
 
         // Initialize turret controller
         turret = new TurretController();
@@ -61,6 +65,7 @@ public class MechanumWithAprilTag extends LinearOpMode {
         flywheel.setDirection(DcMotor.Direction.REVERSE);
 
         hood.setPosition(0.0);
+        flipper.setPosition(0.8);
 
         telemetry.addData("Status", "Initialized");
         telemetry.addData("Camera", "Ready");
@@ -102,6 +107,8 @@ public class MechanumWithAprilTag extends LinearOpMode {
             // Intake control
             if (gamepad1.circle) {
                 intake.setPower(1);
+            } else if (gamepad1.square) {
+                intake.setPower(-1);
             } else {
                 intake.setPower(0);
             }
@@ -111,6 +118,12 @@ public class MechanumWithAprilTag extends LinearOpMode {
                 flywheel.setPower(1);
             } else {
                 flywheel.setPower(0);
+            }
+
+            if (gamepad1.left_bumper) {
+                flipper.setPosition(0.5);
+            } else {
+                flipper.setPosition(0.8);
             }
 
             // Toggle auto-tracking with triangle button
@@ -123,32 +136,41 @@ public class MechanumWithAprilTag extends LinearOpMode {
             if (autoTrackEnabled) {
                 // Auto-track AprilTag
                 Double bearing = aprilTagDetector.getTargetBearing();
-                if (bearing != null) {;
-                    if (Math.abs(bearing) > 0.5) {
-                        turret.setTargetAngle(turret.getCurrentAngle() - smootheningFactor * bearing);
+                if (bearing != null) {
+                    if (bearing <= -5) {
+                        turret.setTargetAngle(turret.getCurrentAngle() - (bearing / 5));
+                    } else if (bearing >= 5) {
+                        turret.setTargetAngle(turret.getCurrentAngle() + (bearing / 5));
                     }
+                    //if (Math.abs(bearing) > 1) {
+                    //    turret.setTargetAngle((turret.getCurrentAngle() * (1 - smootheningFactor)) + (bearing * smootheningFactor));
+                    //}
                 }
             } else {
                 // Manual control with D-pad
                 if (gamepad1.dpad_left) {
-                    turret.setTargetAngle(turret.getCurrentAngle() + 2);
+                    turret.setTargetAngle(turret.getCurrentAngle() + 1);
                 } else if (gamepad1.dpad_right) {
-                    turret.setTargetAngle(turret.getCurrentAngle() - 2);
-                }
+                    turret.setTargetAngle(turret.getCurrentAngle() - 1);
+                }// else {
+                // Lock current position when no input
+                //    turret.setTargetAngle(turret.getCurrentAngle());
+                //}
             }
 
             // Hood control
-            if (gamepad1.dpad_up) {
-                hoodpos = Math.max(0, Math.min(hoodpos + 0.05, 1));
-                hood.setPosition(hoodpos);
-            } else if (gamepad1.dpad_down) {
-                hoodpos = Math.max(0, Math.min(hoodpos - 0.05, 1));
-                hood.setPosition(hoodpos);
-            }
-
-            // Reset turret to zero with square button
-            if (gamepad1.square) {
-                turret.reset();
+            if (autoTrackEnabled) {
+                if (false) {
+                    hood.setPosition(hoodpos);
+                }
+            } else {
+                if (gamepad1.dpad_up) {
+                    hoodpos = Math.max(0, Math.min(hoodpos + 0.05, 1));
+                    hood.setPosition(hoodpos);
+                } else if (gamepad1.dpad_down) {
+                    hoodpos = Math.max(0, Math.min(hoodpos - 0.05, 1));
+                    hood.setPosition(hoodpos);
+                }
             }
 
             // Telemetry
@@ -168,6 +190,9 @@ public class MechanumWithAprilTag extends LinearOpMode {
             telemetry.addData("Turret Angle", "%.1f°", turret.getCurrentAngle());
             telemetry.addData("At Target", turret.isAtTarget() ? "YES" : "NO");
             telemetry.addData("Hood Position", hoodpos);
+
+            telemetry.addData("rxs", gamepad1.right_stick_x);
+
             telemetry.update();
         }
 

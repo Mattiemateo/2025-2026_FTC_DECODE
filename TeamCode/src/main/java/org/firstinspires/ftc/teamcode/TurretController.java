@@ -9,7 +9,7 @@ public class TurretController {
     private DcMotorEx turretMotor;
 
     // PID Constants
-    private double kP = 0.15;
+    private double kP = 0.275;
     private double kI = 0.0;
     private double kD = 0.0002;
 
@@ -21,7 +21,7 @@ public class TurretController {
     // Turret Configuration
     // 28 ticks/rev * 20:1 planetary * (95/28) gear reduction = 1900 ticks/rev
     private static final double TICKS_PER_DEGREE = (28 * 20 * 95.0 / 28.0) / 360.0;
-    private static final double MAX_POWER = 0.5;
+    private static final double MAX_POWER = 0.3;
     private static final double TOLERANCE = 2.0; // degrees
 
     private double targetAngle = 0;
