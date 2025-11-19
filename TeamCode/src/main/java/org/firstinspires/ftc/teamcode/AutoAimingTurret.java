@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.qualcomm.hardware.bosch.BNO055IMU;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
@@ -7,53 +8,74 @@ import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import java.util.List;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
+import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
+import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
 
-@TeleOp(name = "Auto-aiming turret", group = "Iterative Opmode")
+@SuppressWarnings({"unused", "FieldCanBeLocal"})
+@TeleOp(name = "Auto-aiming turret v2", group = "Iterative Opmode")
 public class AutoAimingTurret extends OpMode {
 
-    // Hardware
+    // --- Hardware ---
     private DcMotorEx turretMotor;
     private Limelight3A limelight;
+    private BNO055IMU imu;
 
-    // PID Controller variables
-    private static final double KP = 0.015; // Proportional gain - START LOW and increase
-    private static final double KI = 0.0001; // Integral gain - usually keep small
-    private static final double KD = 0.002; // Derivative gain - helps reduce overshoot
+    // --- Constants ---
 
-    private static final double TARGET_X = 0.0; // Target is centered (tx = 0)
-    private double integral = 0.0;
-    private double lastError = 0.0;
-    private final ElapsedTime timer = new ElapsedTime();
-    private final ElapsedTime targetLostTimer = new ElapsedTime();
+    // TODO: Tune this value for your specific turret motor and gear ratio.
+    // This is for a GoBILDA 5203 series motor (537.7 Ticks/Rev) with a 1:1 gear ratio.
+    private static final double TICKS_PER_DEGREE = 537.7 / 360.0;
 
-    // Deadband and limits
-    private static final double POSITION_TOLERANCE = 1.5; // degrees
-    private static final double MIN_POWER = 0.05; // Minimum power to overcome friction
-    private static final double MAX_POWER = 0.4; // Maximum turret speed
-    private static final double TARGET_LOST_TIMEOUT = 0.5; // seconds before resetting
+    // PIDF Coefficients for the turret motor's RUN_TO_POSITION mode.
+    // TODO: Tune these coefficients for your turret for snappy and accurate movements.
+    private static final double P = 10.0; // Proportional - start around 10
+    private static final double I = 0.0; // Integral - keep 0 for now
+    private static final double D = 0.0; // Derivative - keep 0 for now
+    private static final double F = 0.0; // Feedforward - can be 0
 
-    // Direction tuning - CHANGE THIS IF TURRET MOVES WRONG WAY
-    private static final boolean INVERT_MOTOR = false; // Set to true if it moves backwards
+    // Maximum power for the turret motor when moving to a position.
+    private static final double MAX_POWER = 0.8;
 
+    // How long to keep tracking with the IMU after the target is lost.
+    private static final double TARGET_LOST_TIMEOUT = 2.0; // seconds
+
+    // --- State Variables ---
+    // The field-centric angle of the target, which we will continuously aim at.
+    private double lastKnownTargetAngleField = 0.0;
     private boolean targetWasVisible = false;
+    private final ElapsedTime targetLostTimer = new ElapsedTime();
 
     @Override
     public void init() {
         try {
-            turretMotor = hardwareMap.get(DcMotorEx.class, "aim");
-            turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+            // --- IMU Initialization ---
+            imu = hardwareMap.get(BNO055IMU.class, "imu");
+            BNO055IMU.Parameters parameters = new BNO055IMU.Parameters();
+            parameters.angleUnit = BNO055IMU.AngleUnit.DEGREES;
+            imu.initialize(parameters);
 
+            // --- Turret Motor Initialization ---
+            turretMotor = hardwareMap.get(DcMotorEx.class, "aim");
+            turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+            turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER); // Start in velocity control
+
+            // Set the PIDF coefficients for position control
+            PIDFCoefficients pidfCoefficients = new PIDFCoefficients(P, I, D, F);
+            turretMotor.setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, pidfCoefficients);
+
+            // --- Limelight Initialization ---
             limelight = hardwareMap.get(Limelight3A.class, "limelight");
             limelight.pipelineSwitch(0); // Use your AprilTag pipeline
             limelight.start();
 
-            timer.reset();
             targetLostTimer.reset();
-
             telemetry.addData("Status", "Initialized");
-            telemetry.addData("Motor Inverted", INVERT_MOTOR);
         } catch (Exception e) {
             telemetry.addData("Init Error", e.getMessage());
         }
@@ -62,142 +84,80 @@ public class AutoAimingTurret extends OpMode {
     @Override
     public void loop() {
         try {
+            // --- Get Current State ---
+            double robotHeading = getRobotHeading();
+            double currentTurretAngle = turretMotor.getCurrentPosition() / TICKS_PER_DEGREE;
+
+            // --- Vision Processing ---
             LLResult result = limelight.getLatestResult();
+            if (hasValidTarget(result)) {
+                // TARGET IS VISIBLE: Recalculate the field-centric angle.
+                double tx = result.getFiducialResults().get(0).getTargetXDegrees();
 
-            // Check if we have a valid result with fiducial data
-            if (result != null && result.isValid()) {
-                List<LLResultTypes.FiducialResult> fiducials =
-                    result.getFiducialResults();
+                // Field Angle = Robot's Angle + Turret's Angle relative to Robot + Target's Angle relative to Turret
+                lastKnownTargetAngleField = robotHeading + currentTurretAngle + tx;
 
-                if (fiducials != null && !fiducials.isEmpty()) {
-                    // Target found!
-                    targetWasVisible = true;
-                    targetLostTimer.reset();
-
-                    // Get the first (closest/best) fiducial
-                    LLResultTypes.FiducialResult fiducial = fiducials.get(0);
-
-                    // Get horizontal offset from center (tx)
-                    double tx = fiducial.getTargetXDegrees();
-
-                    // Calculate time since last update
-                    double dt = timer.seconds();
-                    timer.reset();
-
-                    // Prevent division by zero or huge derivatives
-                    if (dt < 0.001) dt = 0.001;
-                    if (dt > 1.0) dt = 1.0; // Cap dt if loop was slow
-
-                    // Calculate error
-                    double error = tx - TARGET_X;
-
-                    // PID calculations
-                    integral += error * dt;
-
-                    // Anti-windup: prevent integral from getting too large
-                    integral = Math.max(-50, Math.min(50, integral));
-
-                    double derivative = (error - lastError) / dt;
-
-                    // Calculate PID output
-                    double pidOutput =
-                        (KP * error) + (KI * integral) + (KD * derivative);
-
-                    // Apply deadband - stop if close enough
-                    if (Math.abs(error) < POSITION_TOLERANCE) {
-                        pidOutput = 0;
-                        integral = 0; // Reset integral when on target
-                    }
-
-                    // Apply minimum power if not zero (overcome static friction)
-                    if (pidOutput != 0) {
-                        if (Math.abs(pidOutput) < MIN_POWER) {
-                            pidOutput = MIN_POWER * Math.signum(pidOutput);
-                        }
-                    }
-
-                    // Clamp output to max power
-                    double motorPower = Math.max(
-                        -MAX_POWER,
-                        Math.min(MAX_POWER, pidOutput)
-                    );
-
-                    // Apply inversion if needed
-                    if (INVERT_MOTOR) {
-                        motorPower = -motorPower;
-                    }
-
-                    // Safety check: ensure motor power is finite
-                    if (!Double.isFinite(motorPower)) {
-                        motorPower = 0;
-                        resetPID();
-                    }
-
-                    turretMotor.setPower(motorPower);
-
-                    lastError = error;
-
-                    // Telemetry for tuning
-                    telemetry.addData("Status", "LOCKED ON");
-                    telemetry.addData("TX (degrees)", "%.2f", tx);
-                    telemetry.addData(
-                        "Target Position",
-                        tx > 0 ? "RIGHT" : (tx < 0 ? "LEFT" : "CENTER")
-                    );
-                    telemetry.addData("Error", "%.2f", error);
-                    telemetry.addData("PID Output", "%.3f", pidOutput);
-                    telemetry.addData("Motor Power", "%.3f", motorPower);
-                    telemetry.addData(
-                        "Motor Direction",
-                        motorPower > 0
-                            ? "POSITIVE"
-                            : (motorPower < 0 ? "NEGATIVE" : "STOPPED")
-                    );
-                    telemetry.addData("Tag ID", fiducial.getFiducialId());
-                    telemetry.addData("# Tags Detected", fiducials.size());
-                } else {
-                    // Result valid but no fiducials detected
-                    handleNoTarget();
-                }
-            } else {
-                // No valid result
-                handleNoTarget();
+                targetWasVisible = true;
+                targetLostTimer.reset(); // Reset the timer since we found the target
             }
-        } catch (Exception e) {
-            // Catch any errors to prevent crash
-            telemetry.addData("Error", e.getMessage());
-            telemetry.addData("Error Type", e.getClass().getSimpleName());
-            stopTurret();
-        }
 
+            // --- Control Logic ---
+            if (targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT) {
+                // AIM AT TARGET: We have a target to aim at (either visible now or recently).
+                // Calculate the desired turret angle to counteract robot rotation.
+                double desiredTurretAngle = lastKnownTargetAngleField - robotHeading;
+
+                // Convert the desired angle to motor encoder ticks.
+                int targetPositionTicks = (int) (desiredTurretAngle * TICKS_PER_DEGREE);
+
+                // Command the motor to move to the target position.
+                turretMotor.setTargetPosition(targetPositionTicks);
+                turretMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+                turretMotor.setPower(MAX_POWER); // Apply power to move to the position
+
+                telemetry.addData("Status", targetLostTimer.seconds() > 0.1 ? "TRACKING (IMU)" : "LOCKED ON (Vision)");
+                telemetry.addData("Desired Turret Angle", "%.2f", desiredTurretAngle);
+
+            } else {
+                // TARGET LOST: Stop the turret, it will hold its last position due to BRAKE behavior.
+                turretMotor.setPower(0);
+                targetWasVisible = false; // Give up until we see the target again
+                telemetry.addData("Status", "SEARCHING");
+            }
+
+            // --- Telemetry ---
+            telemetry.addData("Robot Heading", "%.2f", robotHeading);
+            telemetry.addData("Current Turret Angle", "%.2f", currentTurretAngle);
+            telemetry.addData("Last Field Angle", "%.2f", lastKnownTargetAngleField);
+            telemetry.addData("Target Visible", hasValidTarget(result) ? "Yes" : "No");
+
+        } catch (Exception e) {
+            telemetry.addData("Loop Error", e.getMessage());
+            turretMotor.setPower(0); // Stop motor on error
+        }
         telemetry.update();
     }
 
-    private void handleNoTarget() {
-        // Target lost - decide what to do
-        if (
-            targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT
-        ) {
-            // Recently lost target, maintain last power briefly (coast)
-            telemetry.addData("Status", "TRACKING LOST - Coasting");
-            telemetry.addData("Time Lost", "%.2f s", targetLostTimer.seconds());
-        } else {
-            // Target lost for too long - stop and reset
-            stopTurret();
-            telemetry.addData("Status", "SEARCHING");
-            telemetry.addData("Target Visible", "No");
+    /**
+     * Gets the robot's current heading from the IMU.
+     * @return The robot's heading in degrees, from -180 to 180.
+     */
+    private double getRobotHeading() {
+        Orientation angles = imu.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES);
+        return angles.firstAngle; // Usually Z axis is the heading
+    }
+
+    /**
+     * Checks if the Limelight result is valid and contains at least one AprilTag.
+     * @param result The LLResult from the Limelight.
+     * @return True if a valid target is found, false otherwise.
+     */
+    private boolean hasValidTarget(LLResult result) {
+        if (result == null || !result.isValid()) {
+            return false;
         }
-    }
-
-    private void stopTurret() {
-        turretMotor.setPower(0);
-        resetPID();
-        targetWasVisible = false;
-    }
-
-    private void resetPID() {
-        integral = 0;
-        lastError = 0;
+        List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
+        return fiducials != null && !fiducials.isEmpty();
     }
 
     @Override

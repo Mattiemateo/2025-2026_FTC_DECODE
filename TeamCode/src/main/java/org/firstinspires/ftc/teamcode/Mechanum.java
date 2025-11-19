@@ -5,36 +5,31 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.Servo;
 
-@TeleOp
+@TeleOp(name = "Mechanum Drive with Auto-Aiming Turret", group = "Mechanum")
 public class Mechanum extends LinearOpMode {
-    private DcMotor flywheel;
-    private DcMotor intake;
-    private Servo hood;
-    private DcMotor leftFrontDrive;
-    private DcMotor rightFrontDrive;
-    private DcMotor leftBackDrive;
-    private DcMotor rightBackDrive;
 
-    private TurretController turret;
-
-    double hoodpos = 0;
+    // --- Constants ---
+    private static final double MANUAL_TURRET_INCREMENT = 2.0; // degrees
+    private static final double HOOD_INCREMENT = 0.05;
+    private static final double SLOW_MODE_SCALE = 0.25;
 
     @Override
     public void runOpMode() {
-        // Initialize motors and servos
-        leftFrontDrive = hardwareMap.get(DcMotor.class, "leftFrontDrive");
-        rightFrontDrive = hardwareMap.get(DcMotor.class, "rightFrontDrive");
-        leftBackDrive = hardwareMap.get(DcMotor.class, "leftBackDrive");
-        rightBackDrive = hardwareMap.get(DcMotor.class, "rightBackDrive");
+        // --- Hardware Initialization ---
+        DcMotor leftFrontDrive = hardwareMap.get(DcMotor.class, "leftFrontDrive");
+        DcMotor rightFrontDrive = hardwareMap.get(DcMotor.class, "rightFrontDrive");
+        DcMotor leftBackDrive = hardwareMap.get(DcMotor.class, "leftBackDrive");
+        DcMotor rightBackDrive = hardwareMap.get(DcMotor.class, "rightBackDrive");
 
-        intake = hardwareMap.get(DcMotor.class, "intake"); // port 2
-        hood = hardwareMap.get(Servo.class, "hood");
-        flywheel = hardwareMap.get(DcMotor.class, "flywheel"); // port 0
+        DcMotor intake = hardwareMap.get(DcMotor.class, "intake"); // port 2
+        Servo hood = hardwareMap.get(Servo.class, "hood");
+        DcMotor flywheel = hardwareMap.get(DcMotor.class, "flywheel"); // port 0
 
-        // Initialize turret controller
-        turret = new TurretController();
-        turret.init(hardwareMap); // port 1
+        // --- Controller Initialization ---
+        TurretController turret = new TurretController();
+        turret.init(hardwareMap, telemetry);
 
+        // --- Motor & Servo Configuration ---
         leftFrontDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         rightFrontDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         leftBackDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
@@ -43,16 +38,23 @@ public class Mechanum extends LinearOpMode {
         flywheel.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
-        // Motor directions
-        leftFrontDrive.setDirection(DcMotor.Direction.FORWARD);
-        rightFrontDrive.setDirection(DcMotor.Direction.REVERSE);
-        leftBackDrive.setDirection(DcMotor.Direction.FORWARD);
-        rightBackDrive.setDirection(DcMotor.Direction.REVERSE);
+        // Set motor directions - this is a common configuration
+        // You may need to reverse directions based on your robot's build
+        leftFrontDrive.setDirection(DcMotor.Direction.REVERSE);
+        leftBackDrive.setDirection(DcMotor.Direction.REVERSE);
+        rightFrontDrive.setDirection(DcMotor.Direction.FORWARD);
+        rightBackDrive.setDirection(DcMotor.Direction.FORWARD);
 
         intake.setDirection(DcMotor.Direction.FORWARD);
         flywheel.setDirection(DcMotor.Direction.REVERSE);
 
-        hood.setPosition(0.0);
+        // --- State Variables ---
+        boolean autoAim = false;
+        boolean lastTrianglePressed = false;
+        double hoodPosition = 0.0;
+
+        // Initialize hardware to starting positions
+        hood.setPosition(hoodPosition);
 
         telemetry.addData("Status", "Initialized");
         telemetry.update();
@@ -60,74 +62,71 @@ public class Mechanum extends LinearOpMode {
         waitForStart();
 
         while (opModeIsActive()) {
-            // Update turret PID
+            // --- Auto-Aim Toggle ---
+            boolean isTrianglePressed = gamepad1.triangle;
+            if (isTrianglePressed && !lastTrianglePressed) {
+                autoAim = !autoAim;
+                turret.enableAutoAim(autoAim);
+            }
+            lastTrianglePressed = isTrianglePressed;
+
+            // --- Update Controllers ---
             turret.update();
 
-            // Driving
+            // --- Drivetrain ---
+            // Standard Mecanum drive logic
+            double y = -gamepad1.left_stick_y; // Remember, this is reversed!
             double x = gamepad1.left_stick_x;
-            double y = -gamepad1.left_stick_y;
-            double turn = gamepad1.right_stick_x;
-            double theta = Math.atan2(y, x);
-            double power = Math.hypot(x, y);
-            double sin = Math.sin(theta - Math.PI / 4);
-            double cos = Math.cos(theta - Math.PI / 4);
-            double leftFront = power * cos + turn;
-            double rightFront = power * sin - turn;
-            double leftBack = power * sin + turn;
-            double rightBack = power * cos - turn;
+            double rx = gamepad1.right_stick_x;
 
-            if ((power + Math.abs(turn)) > 1) {
-                leftFront /= power + Math.abs(turn);
-                leftBack /= power + Math.abs(turn);
-                rightFront /= power + Math.abs(turn);
-                rightBack /= power + Math.abs(turn);
+            // Denominator is the largest motor power (absolute value) or 1
+            // This ensures all the powers maintain the same ratio, but only when
+            // at least one is out of the range [-1, 1]
+            double denominator = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1);
+            double leftFrontPower = (y + x + rx) / denominator;
+            double leftBackPower = (y - x + rx) / denominator;
+            double rightFrontPower = (y - x - rx) / denominator;
+            double rightBackPower = (y + x - rx) / denominator;
+
+            // Slow mode
+            double scale = gamepad1.left_trigger > 0.5 ? SLOW_MODE_SCALE : 1.0;
+
+            leftFrontDrive.setPower(leftFrontPower * scale);
+            leftBackDrive.setPower(leftBackPower * scale);
+            rightFrontDrive.setPower(rightFrontPower * scale);
+            rightBackDrive.setPower(rightBackPower * scale);
+
+            // --- Subsystem Controls ---
+            intake.setPower(gamepad1.circle ? 1 : 0);
+            flywheel.setPower(gamepad1.cross ? 1 : 0);
+
+            // Manual Turret Control
+            if (!autoAim) {
+                if (gamepad1.dpad_left) {
+                    turret.setManualTargetAngle(turret.getCurrentAngle() + MANUAL_TURRET_INCREMENT);
+                } else if (gamepad1.dpad_right) {
+                    turret.setManualTargetAngle(turret.getCurrentAngle() - MANUAL_TURRET_INCREMENT);
+                }
             }
 
-            double scale = gamepad1.left_trigger > 0.5 ? 0.25 : 1.0;
-
-            leftFrontDrive.setPower(leftFront * scale);
-            leftBackDrive.setPower(leftBack * scale);
-            rightFrontDrive.setPower(rightFront * scale);
-            rightBackDrive.setPower(rightBack * scale);
-
-            // Intake control
-            if (gamepad1.circle) {
-                intake.setPower(1);
-            } else {
-                intake.setPower(0);
-            }
-
-            // Flywheel control
-            if (gamepad1.cross) {
-                flywheel.setPower(1);
-            } else {
-                flywheel.setPower(0);
-            }
-
-            // Turret control - manual angle adjustment
-            if (gamepad1.dpad_left) {
-                turret.setTargetAngle(turret.getCurrentAngle() + 2); // +2 degrees
-            } else if (gamepad1.dpad_right) {
-                turret.setTargetAngle(turret.getCurrentAngle() - 2); // -2 degrees
-            }
-
-            // Hood control
+            // Hood Control
             if (gamepad1.dpad_up) {
-                hoodpos = Math.max(0, Math.min(hoodpos + 0.05, 1));
-                hood.setPosition(hoodpos);
+                hoodPosition += HOOD_INCREMENT;
             } else if (gamepad1.dpad_down) {
-                hoodpos = Math.max(0, Math.min(hoodpos - 0.05, 1));
-                hood.setPosition(hoodpos);
+                hoodPosition -= HOOD_INCREMENT;
             }
+            // Clamp hood position to the valid range [0.0, 1.0]
+            hoodPosition = Math.max(0.0, Math.min(1.0, hoodPosition));
+            hood.setPosition(hoodPosition);
 
-            // Reset turret to zero with square button
+            // Reset turret to zero position
             if (gamepad1.square) {
                 turret.reset();
             }
 
-            telemetry.addData("Turret Angle", "%.1f°", turret.getCurrentAngle());
-            telemetry.addData("At Target", turret.isAtTarget() ? "YES" : "NO");
-            telemetry.addData("Hood Position", hoodpos);
+            // --- Telemetry ---
+            telemetry.addData("Hood Position", "%.2f", hoodPosition);
+            // Turret telemetry is handled by the TurretController class
             telemetry.update();
         }
     }
