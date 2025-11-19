@@ -59,6 +59,8 @@ public class Mechanum extends LinearOpMode {
         boolean autoAim = false;
         boolean lastTrianglePressed = false;
         double hoodPosition = 0.0;
+        boolean intakeOn = false;
+        boolean lastCirclePressed = false;
 
         // Initialize hardware to starting positions
         hood.setPosition(hoodPosition);
@@ -70,12 +72,19 @@ public class Mechanum extends LinearOpMode {
 
         while (opModeIsActive()) {
             // --- Auto-Aim Toggle ---
-            boolean isTrianglePressed = gamepad1.triangle;
+            boolean isTrianglePressed = gamepad2.triangle || gamepad1.triangle;
             if (isTrianglePressed && !lastTrianglePressed) {
                 autoAim = !autoAim;
                 turret.enableAutoAim(autoAim);
             }
             lastTrianglePressed = isTrianglePressed;
+
+            // --- Intake Toggle ---
+            boolean isCirclePressed = gamepad2.circle || gamepad1.circle;
+            if (isCirclePressed && !lastCirclePressed) {
+                intakeOn = !intakeOn;
+            }
+            lastCirclePressed = isCirclePressed;
 
             // --- Update Controllers ---
             turret.update();
@@ -104,22 +113,27 @@ public class Mechanum extends LinearOpMode {
             rightBackDrive.setPower(rightBackPower * scale);
 
             // --- Subsystem Controls ---
-            intake.setPower(gamepad1.circle ? 1 : 0);
-            flywheel.setPower(gamepad1.cross ? 1 : 0);
+            if (intakeOn) {
+                intake.setPower(1);
+            } else {
+                intake.setPower(0);
+            }
+
+            flywheel.setPower(gamepad2.cross || gamepad1.cross ? 1 : 0);
 
             // Manual Turret Control
             if (!autoAim) {
-                if (gamepad1.dpad_left) {
+                if (gamepad2.dpad_left || gamepad1.dpad_left) {
                     turret.setManualTargetAngle(turret.getCurrentAngle() + MANUAL_TURRET_INCREMENT);
-                } else if (gamepad1.dpad_right) {
+                } else if (gamepad2.dpad_right || gamepad1.dpad_right) {
                     turret.setManualTargetAngle(turret.getCurrentAngle() - MANUAL_TURRET_INCREMENT);
                 }
             }
 
             // Hood Control
-            if (gamepad1.dpad_up) {
+            if (gamepad2.dpad_up || gamepad1.dpad_up) {
                 hoodPosition += HOOD_INCREMENT;
-            } else if (gamepad1.dpad_down) {
+            } else if (gamepad2.dpad_down || gamepad1.dpad_down) {
                 hoodPosition -= HOOD_INCREMENT;
             }
             // Clamp hood position to the valid range [0.0, 1.0]
@@ -127,7 +141,7 @@ public class Mechanum extends LinearOpMode {
             hood.setPosition(hoodPosition);
 
             // Reset turret to zero position
-            if (gamepad1.square) {
+            if (gamepad2.ps || gamepad1.ps) {
                 turret.reset();
             }
 
