@@ -11,10 +11,12 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.util.ElapsedTime;
-import java.util.List;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+
+import java.util.List;
 
 @Configurable
 public class TurretController {
@@ -37,6 +39,7 @@ public class TurretController {
     private boolean autoAimEnabled = false;
     private double manualTargetAngle = 0.0;
     private double lastKnownTargetAngleField = 0.0;
+    private double lastKnownDistance = 0.0;
     private boolean targetWasVisible = false;
     private final ElapsedTime targetLostTimer = new ElapsedTime();
 
@@ -83,10 +86,19 @@ public class TurretController {
 
         LLResult result = limelight.getLatestResult();
         if (hasValidTarget(result)) {
+            // Update angle
             double tx = result.getFiducialResults().get(0).getTargetXDegrees();
             lastKnownTargetAngleField = robotHeading + currentTurretAngle + tx;
             targetWasVisible = true;
             targetLostTimer.reset();
+
+            // Calculate and store distance using botpose
+            // This gives the robot's X,Y,Z on the field in inches.
+            Pose3D botPose = result.getBotpose();
+            if (botPose != null) {
+                // Calculate the 2D distance to the field origin (0,0)
+                this.lastKnownDistance = Math.hypot(botPose.getPosition().x, botPose.getPosition().y);
+            }
         }
 
         if (targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT) {
@@ -123,6 +135,10 @@ public class TurretController {
 
     public boolean isTracking() {
         return autoAimEnabled && targetWasVisible;
+    }
+
+    public double getLastKnownDistance() {
+        return this.lastKnownDistance;
     }
 
     /**

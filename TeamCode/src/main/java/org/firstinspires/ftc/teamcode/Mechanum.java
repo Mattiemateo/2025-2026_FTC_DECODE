@@ -19,7 +19,6 @@ public class Mechanum extends LinearOpMode {
     public static boolean X_REVERSED = true;
     public static boolean RX_REVERSED = false;
 
-
     @Override
     public void runOpMode() {
         // --- Hardware Initialization ---
@@ -112,13 +111,8 @@ public class Mechanum extends LinearOpMode {
             rightFrontDrive.setPower(rightFrontPower * scale);
             rightBackDrive.setPower(rightBackPower * scale);
 
-            // --- Subsystem Controls ---
-            if (intakeOn) {
-                intake.setPower(1);
-            } else {
-                intake.setPower(0);
-            }
-
+            // --- Subsystems ---
+            intake.setPower(intakeOn ? 1 : 0);
             flywheel.setPower(gamepad2.cross || gamepad1.cross ? 1 : 0);
 
             // Manual Turret Control
@@ -147,7 +141,10 @@ public class Mechanum extends LinearOpMode {
 
             // --- Telemetry ---
             telemetry.addData("Hood Position", "%.2f", hoodPosition);
-            // Turret telemetry is handled by the TurretController class
+            if (turret.isTracking()) {
+                telemetry.addData("Target Distance", "%.2f inches", turret.getLastKnownDistance());
+            }
+            // The TurretController handles its own telemetry now.
             telemetry.update();
         }
     }
