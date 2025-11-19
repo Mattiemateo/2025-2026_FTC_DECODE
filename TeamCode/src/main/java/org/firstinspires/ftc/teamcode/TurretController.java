@@ -97,14 +97,17 @@ public class TurretController {
 
         LLResult result = limelight.getLatestResult();
         if (hasValidTarget(result)) {
-            // TARGET VISIBLE: Update the field-centric target angle
+            // TARGET VISIBLE: Track directly using vision
             double tx = result.getFiducialResults().get(0).getTargetXDegrees();
-            // Field angle = Robot heading + Turret angle relative to robot - Target offset
-            // NOTE: tx is negated because Limelight tx is positive when target is to the RIGHT,
-            // but we need to ADD to the angle when target is to the LEFT (counterclockwise)
-            lastKnownTargetAngleField = robotHeading + currentTurretAngle - tx;
+
+            // Store the field-centric angle for use when target is lost
+            lastKnownTargetAngleField = robotHeading + currentTurretAngle + tx;
             targetWasVisible = true;
             targetLostTimer.reset();
+
+            // While target is visible, directly aim at it (simple control)
+            double desiredTurretAngle = currentTurretAngle + tx;
+            setTargetAngleInternal(desiredTurretAngle);
 
             // Calculate and store distance
             // Try multiple methods in order of preference
@@ -120,41 +123,14 @@ public class TurretController {
                 double avgDist = result.getBotposeAvgDist();
                 if (avgDist > 0) {
                     this.lastKnownDistance = avgDist;
-                } else {
-                    // Method 3: Calculate distance from first detected fiducial
-                    List<LLResultTypes.FiducialResult> fiducials =
-                        result.getFiducialResults();
-                    if (fiducials != null && !fiducials.isEmpty()) {
-                        LLResultTypes.FiducialResult fiducial = fiducials.get(
-                            0
-                        );
-                        // Get the target-space position (distance in X, Y, Z from camera)
-                        double[] targetSpaceTranslation =
-                            fiducial.getTargetXYZ();
-                        if (
-                            targetSpaceTranslation != null &&
-                            targetSpaceTranslation.length >= 3
-                        ) {
-                            // Calculate 3D distance from camera to target
-                            this.lastKnownDistance = Math.sqrt(
-                                targetSpaceTranslation[0] *
-                                        targetSpaceTranslation[0] +
-                                    targetSpaceTranslation[1] *
-                                    targetSpaceTranslation[1] +
-                                    targetSpaceTranslation[2] *
-                                    targetSpaceTranslation[2]
-                            );
-                        }
-                    }
                 }
+                // If avgDist is 0 or negative, lastKnownDistance remains at its previous value
             }
-        }
-
-        // Continue tracking if we recently saw the target (within timeout)
-        if (
+        } else if (
             targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT
         ) {
-            // Calculate turret angle needed to point at the field-centric target
+            // TARGET LOST: Use IMU to maintain field-centric aim
+            // Calculate turret angle needed to point at the last known field-centric target
             // This compensates for robot rotation automatically
             double desiredTurretAngle =
                 lastKnownTargetAngleField - robotHeading;
