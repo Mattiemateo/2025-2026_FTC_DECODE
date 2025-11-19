@@ -1,17 +1,24 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.bylazar.configurables.annotations.Configurable;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.Servo;
 
+@Configurable
 @TeleOp(name = "Mechanum Drive with Auto-Aiming Turret", group = "Mechanum")
 public class Mechanum extends LinearOpMode {
 
     // --- Constants ---
-    private static final double MANUAL_TURRET_INCREMENT = 2.0; // degrees
-    private static final double HOOD_INCREMENT = 0.05;
-    private static final double SLOW_MODE_SCALE = 0.25;
+    public static double MANUAL_TURRET_INCREMENT = 4.0; // degrees
+    public static double HOOD_INCREMENT = 0.05;
+    public static double SLOW_MODE_SCALE = 0.25;
+
+    public static boolean Y_REVERSED = false;
+    public static boolean X_REVERSED = true;
+    public static boolean RX_REVERSED = false;
+
 
     @Override
     public void runOpMode() {
@@ -75,9 +82,9 @@ public class Mechanum extends LinearOpMode {
 
             // --- Drivetrain ---
             // Standard Mecanum drive logic
-            double y = -gamepad1.left_stick_y; // Remember, this is reversed!
-            double x = gamepad1.left_stick_x;
-            double rx = gamepad1.right_stick_x;
+            double y = Y_REVERSED ? -gamepad1.left_stick_y : gamepad1.left_stick_y;
+            double x = X_REVERSED ? -gamepad1.left_stick_x : gamepad1.left_stick_x;
+            double rx = RX_REVERSED ? -gamepad1.right_stick_x : gamepad1.right_stick_x;
 
             // Denominator is the largest motor power (absolute value) or 1
             // This ensures all the powers maintain the same ratio, but only when

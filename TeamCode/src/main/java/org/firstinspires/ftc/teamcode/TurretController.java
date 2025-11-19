@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.bylazar.configurables.annotations.Configurable;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
@@ -15,6 +16,7 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
+@Configurable
 public class TurretController {
 
     // --- Hardware ---
@@ -25,11 +27,11 @@ public class TurretController {
 
     // --- Constants ---
     private static final double TICKS_PER_DEGREE = (28 * 20 * 95.0 / 28.0) / 360.0;
-    private static final double P = 15.0, I = 0.0, D = 0.0, F = 0.0;
-    private static final double MAX_POWER = 0.8;
-    private static final double TARGET_LOST_TIMEOUT = 2.0;
+    public static double P = 15.0, I = 0.0, D = 0.0, F = 0.0;
+    public static double TURRET_MAX_POWER = 0.8;
+    public static double TARGET_LOST_TIMEOUT = 2.0;
 
-    private static final int LIMELIGHT_PIPELINE = 8;
+    public static int LIMELIGHT_PIPELINE = 8; // this should probably stay like this
 
     // --- State ---
     private boolean autoAimEnabled = false;
@@ -104,7 +106,7 @@ public class TurretController {
         int targetPositionTicks = (int) (angle * TICKS_PER_DEGREE);
         turretMotor.setTargetPosition(targetPositionTicks);
         turretMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        turretMotor.setPower(MAX_POWER);
+        turretMotor.setPower(TURRET_MAX_POWER);
     }
 
     public void enableAutoAim(boolean enable) {
