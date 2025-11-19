@@ -1,5 +1,8 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.qualcomm.hardware.limelightvision.LLResult;
+import com.qualcomm.hardware.limelightvision.LLResultTypes;
+import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -15,15 +18,15 @@ public class AutoAimingTurret extends OpMode {
     private Limelight3A limelight;
 
     // PID Controller variables
-    private double kP = 0.015; // Proportional gain - START LOW and increase
-    private double kI = 0.0001; // Integral gain - usually keep small
-    private double kD = 0.002; // Derivative gain - helps reduce overshoot
+    private static final double KP = 0.015; // Proportional gain - START LOW and increase
+    private static final double KI = 0.0001; // Integral gain - usually keep small
+    private static final double KD = 0.002; // Derivative gain - helps reduce overshoot
 
-    private double targetX = 0.0; // Target is centered (tx = 0)
+    private static final double TARGET_X = 0.0; // Target is centered (tx = 0)
     private double integral = 0.0;
     private double lastError = 0.0;
-    private ElapsedTime timer = new ElapsedTime();
-    private ElapsedTime targetLostTimer = new ElapsedTime();
+    private final ElapsedTime timer = new ElapsedTime();
+    private final ElapsedTime targetLostTimer = new ElapsedTime();
 
     // Deadband and limits
     private static final double POSITION_TOLERANCE = 1.5; // degrees
@@ -86,7 +89,7 @@ public class AutoAimingTurret extends OpMode {
                     if (dt > 1.0) dt = 1.0; // Cap dt if loop was slow
 
                     // Calculate error
-                    double error = tx - targetX;
+                    double error = tx - TARGET_X;
 
                     // PID calculations
                     integral += error * dt;
@@ -98,7 +101,7 @@ public class AutoAimingTurret extends OpMode {
 
                     // Calculate PID output
                     double pidOutput =
-                        (kP * error) + (kI * integral) + (kD * derivative);
+                        (KP * error) + (KI * integral) + (KD * derivative);
 
                     // Apply deadband - stop if close enough
                     if (Math.abs(error) < POSITION_TOLERANCE) {
