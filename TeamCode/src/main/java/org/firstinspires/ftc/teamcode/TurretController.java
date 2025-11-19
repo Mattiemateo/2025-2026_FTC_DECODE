@@ -25,9 +25,11 @@ public class TurretController {
 
     // --- Constants ---
     private static final double TICKS_PER_DEGREE = (28 * 20 * 95.0 / 28.0) / 360.0;
-    private static final double P = 10.0, I = 0.0, D = 0.0, F = 0.0;
+    private static final double P = 15.0, I = 0.0, D = 0.0, F = 0.0;
     private static final double MAX_POWER = 0.8;
     private static final double TARGET_LOST_TIMEOUT = 2.0;
+
+    private static final int LIMELIGHT_PIPELINE = 8;
 
     // --- State ---
     private boolean autoAimEnabled = false;
@@ -54,7 +56,7 @@ public class TurretController {
             turretMotor.setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, new PIDFCoefficients(P, I, D, F));
 
             limelight = hardwareMap.get(Limelight3A.class, "limelight");
-            limelight.pipelineSwitch(0);
+            limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
             limelight.start();
 
             targetLostTimer.reset();
