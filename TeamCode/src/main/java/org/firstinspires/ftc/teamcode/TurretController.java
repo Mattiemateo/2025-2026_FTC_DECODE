@@ -49,9 +49,9 @@ public class TurretController {
     public void init(HardwareMap hardwareMap, Telemetry telemetry) {
         this.telemetry = telemetry;
         try {
-            // Initialize the IMU with the modern API.
+            // Initialize the IMU with the modern API (works with both BNO055 and BHI260AP).
             imu = hardwareMap.get(IMU.class, "imu");
-            // TODO: Adjust the orientation parameters to match your robot's configuration.
+            // Adjust the orientation parameters to match your robot's configuration.
             // This is for a Control Hub that is mounted horizontally with the logo facing up and the USB ports facing forward.
             IMU.Parameters parameters = new IMU.Parameters(
                 new RevHubOrientationOnRobot(
@@ -60,6 +60,7 @@ public class TurretController {
                 )
             );
             imu.initialize(parameters);
+            telemetry.addData("IMU", "Initialized successfully");
 
             turretMotor = hardwareMap.get(DcMotorEx.class, "aim");
             turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
@@ -77,6 +78,7 @@ public class TurretController {
             telemetry.addData("Turret Controller", "Initialized");
         } catch (Exception e) {
             telemetry.addData("Turret Init Error", e.getMessage());
+            telemetry.addData("Stack Trace", e.getClass().getSimpleName());
         }
     }
 
@@ -95,14 +97,14 @@ public class TurretController {
 
         LLResult result = limelight.getLatestResult();
         if (hasValidTarget(result)) {
-            // Update angle
+            // TARGET VISIBLE: Update the field-centric target angle
             double tx = result.getFiducialResults().get(0).getTargetXDegrees();
+            // Field angle = Robot heading + Turret angle relative to robot + Target offset
             lastKnownTargetAngleField = robotHeading + currentTurretAngle + tx;
             targetWasVisible = true;
             targetLostTimer.reset();
 
             // Calculate and store distance using botpose
-            // This gives the robot's X,Y,Z on the field in inches.
             Pose3D botPose = result.getBotpose();
             if (botPose != null) {
                 // Calculate the 2D distance to the field origin (0,0)
@@ -113,13 +115,22 @@ public class TurretController {
             }
         }
 
+        // Continue tracking if we recently saw the target (within timeout)
         if (
             targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT
         ) {
+            // Calculate turret angle needed to point at the field-centric target
+            // This compensates for robot rotation automatically
             double desiredTurretAngle =
                 lastKnownTargetAngleField - robotHeading;
+
+            // Normalize angle to [-180, 180] to avoid the turret taking the long way
+            while (desiredTurretAngle > 180) desiredTurretAngle -= 360;
+            while (desiredTurretAngle < -180) desiredTurretAngle += 360;
+
             setTargetAngleInternal(desiredTurretAngle);
         } else {
+            // Target lost for too long - stop and reset
             turretMotor.setPower(0);
             targetWasVisible = false;
         }
@@ -161,8 +172,18 @@ public class TurretController {
      * @return The robot's heading in degrees.
      */
     private double getRobotHeading() {
-        YawPitchRollAngles robotOrientation = imu.getRobotYawPitchRollAngles();
-        return robotOrientation.getYaw(AngleUnit.DEGREES);
+        if (imu == null) {
+            telemetry.addData("IMU Error", "IMU not initialized");
+            return 0.0;
+        }
+        try {
+            YawPitchRollAngles robotOrientation =
+                imu.getRobotYawPitchRollAngles();
+            return robotOrientation.getYaw(AngleUnit.DEGREES);
+        } catch (Exception e) {
+            telemetry.addData("IMU Error", e.getMessage());
+            return 0.0;
+        }
     }
 
     private boolean hasValidTarget(LLResult result) {
