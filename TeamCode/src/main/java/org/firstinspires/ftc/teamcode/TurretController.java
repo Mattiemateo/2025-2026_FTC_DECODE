@@ -1,111 +1,158 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.qualcomm.hardware.limelightvision.LLResult;
+import com.qualcomm.hardware.limelightvision.LLResultTypes;
+import com.qualcomm.hardware.limelightvision.Limelight3A;
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.IMU;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.util.ElapsedTime;
+import java.util.List;
+import org.firstinspires.ftc.robotcore.external.Telemetry;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
 public class TurretController {
+
+    // --- Hardware ---
     private DcMotorEx turretMotor;
+    private Limelight3A limelight;
+    private IMU imu;
+    private Telemetry telemetry;
 
-    // PID Constants
-    private double kP = 0.15;
-    private double kI = 0.0;
-    private double kD = 0.0002;
-
-    // PID Variables
-    private double integralSum = 0;
-    private double lastError = 0;
-    private ElapsedTime timer = new ElapsedTime();
-
-    // Turret Configuration
-    // 28 ticks/rev * 20:1 planetary * (95/28) gear reduction = 1900 ticks/rev
+    // --- Constants ---
     private static final double TICKS_PER_DEGREE = (28 * 20 * 95.0 / 28.0) / 360.0;
-    private static final double MAX_POWER = 0.5;
-    private static final double TOLERANCE = 2.0; // degrees
+    private static final double P = 10.0, I = 0.0, D = 0.0, F = 0.0;
+    private static final double MAX_POWER = 0.8;
+    private static final double TARGET_LOST_TIMEOUT = 2.0;
 
-    private double targetAngle = 0;
+    // --- State ---
+    private boolean autoAimEnabled = false;
+    private double manualTargetAngle = 0.0;
+    private double lastKnownTargetAngleField = 0.0;
+    private boolean targetWasVisible = false;
+    private final ElapsedTime targetLostTimer = new ElapsedTime();
 
-    public void init(HardwareMap hardwareMap) {
-        turretMotor = hardwareMap.get(DcMotorEx.class, "aim");// port 1
-        turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        timer.reset();
+    public void init(HardwareMap hardwareMap, Telemetry telemetry) {
+        this.telemetry = telemetry;
+        try {
+            // Initialize the IMU with the modern API.
+            imu = hardwareMap.get(IMU.class, "imu");
+            // TODO: Adjust the orientation parameters to match your robot's configuration.
+            // This is for a Control Hub that is mounted horizontally with the logo facing up and the USB ports facing forward.
+            IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
+                RevHubOrientationOnRobot.LogoFacingDirection.UP,
+                RevHubOrientationOnRobot.UsbFacingDirection.FORWARD));
+            imu.initialize(parameters);
+
+            turretMotor = hardwareMap.get(DcMotorEx.class, "aim");
+            turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+            turretMotor.setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, new PIDFCoefficients(P, I, D, F));
+
+            limelight = hardwareMap.get(Limelight3A.class, "limelight");
+            limelight.pipelineSwitch(0);
+            limelight.start();
+
+            targetLostTimer.reset();
+            telemetry.addData("Turret Controller", "Initialized");
+        } catch (Exception e) {
+            telemetry.addData("Turret Init Error", e.getMessage());
+        }
     }
 
-    /**
-     * Update PID loop - call this every loop iteration
-     */
     public void update() {
-        double currentAngle = getCurrentAngle();
-        double error = targetAngle - currentAngle;
-
-        // Normalize error to [-180, 180]
-        while (error > 180) error -= 360;
-        while (error < -180) error += 360;
-
-        double deltaTime = timer.seconds();
-        timer.reset();
-
-        // Calculate PID terms
-        integralSum += error * deltaTime;
-        double derivative = (error - lastError) / deltaTime;
-        double power = (kP * error) + (kI * integralSum) + (kD * derivative);
-
-        // Clamp power to safe limits
-        power = Math.max(-MAX_POWER, Math.min(MAX_POWER, power));
-
-        turretMotor.setPower(power);
-        lastError = error;
+        if (autoAimEnabled) {
+            updateAutoAim();
+        } else {
+            updateManualControl();
+        }
+        updateTelemetry();
     }
 
-    /**
-     * Set target angle in degrees
-     */
-    public void setTargetAngle(double angle) {
-        targetAngle = angle;
-        integralSum = 0; // Reset integral on new target
+    private void updateAutoAim() {
+        double robotHeading = getRobotHeading();
+        double currentTurretAngle = getCurrentAngle();
+
+        LLResult result = limelight.getLatestResult();
+        if (hasValidTarget(result)) {
+            double tx = result.getFiducialResults().get(0).getTargetXDegrees();
+            lastKnownTargetAngleField = robotHeading + currentTurretAngle + tx;
+            targetWasVisible = true;
+            targetLostTimer.reset();
+        }
+
+        if (targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT) {
+            double desiredTurretAngle = lastKnownTargetAngleField - robotHeading;
+            setTargetAngleInternal(desiredTurretAngle);
+        } else {
+            turretMotor.setPower(0);
+            targetWasVisible = false;
+        }
     }
 
-    /**
-     * Get current turret angle in degrees
-     */
+    private void updateManualControl() {
+        setTargetAngleInternal(manualTargetAngle);
+    }
+
+    private void setTargetAngleInternal(double angle) {
+        int targetPositionTicks = (int) (angle * TICKS_PER_DEGREE);
+        turretMotor.setTargetPosition(targetPositionTicks);
+        turretMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        turretMotor.setPower(MAX_POWER);
+    }
+
+    public void enableAutoAim(boolean enable) {
+        this.autoAimEnabled = enable;
+    }
+
+    public void setManualTargetAngle(double angle) {
+        this.manualTargetAngle = angle;
+    }
+
     public double getCurrentAngle() {
         return turretMotor.getCurrentPosition() / TICKS_PER_DEGREE;
     }
 
-    /**
-     * Check if turret is at target
-     */
-    public boolean isAtTarget() {
-        return Math.abs(targetAngle - getCurrentAngle()) < TOLERANCE;
+    public boolean isTracking() {
+        return autoAimEnabled && targetWasVisible;
     }
 
     /**
-     * Adjust PID constants for tuning
+     * Gets the robot's current heading (yaw) from the IMU.
+     * @return The robot's heading in degrees.
      */
-    public void setPID(double p, double i, double d) {
-        kP = p;
-        kI = i;
-        kD = d;
+    private double getRobotHeading() {
+        YawPitchRollAngles robotOrientation = imu.getRobotYawPitchRollAngles();
+        return robotOrientation.getYaw(AngleUnit.DEGREES);
     }
 
-    /**
-     * Reset encoder to zero
-     */
+    private boolean hasValidTarget(LLResult result) {
+        if (result == null || !result.isValid()) return false;
+        List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
+        return fiducials != null && !fiducials.isEmpty();
+    }
+
+    public void stop() {
+        if (turretMotor != null) turretMotor.setPower(0);
+        if (limelight != null) limelight.stop();
+    }
+
     public void reset() {
         turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        targetAngle = 0;
-        integralSum = 0;
-        lastError = 0;
+        imu.resetYaw(); // Reset the IMU's yaw when resetting the turret
+        manualTargetAngle = 0;
     }
 
-    /**
-     * Stop turret movement
-     */
-    public void stop() {
-        turretMotor.setPower(0);
+    private void updateTelemetry() {
+        telemetry.addData("Turret Mode", autoAimEnabled ? "Auto-Aim" : "Manual");
+        telemetry.addData("Turret Angle", "%.1f°", getCurrentAngle());
+        telemetry.addData("Robot Heading", "%.1f°", getRobotHeading());
+        if(autoAimEnabled) {
+            telemetry.addData("Tracking Status", isTracking() ? (targetLostTimer.seconds() > 0.1 ? "IMU" : "Vision") : "Searching");
+        }
     }
 }
