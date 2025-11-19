@@ -22,10 +22,19 @@ public class Mechanum extends LinearOpMode {
     @Override
     public void runOpMode() {
         // --- Hardware Initialization ---
-        DcMotor leftFrontDrive = hardwareMap.get(DcMotor.class, "leftFrontDrive");
-        DcMotor rightFrontDrive = hardwareMap.get(DcMotor.class, "rightFrontDrive");
+        DcMotor leftFrontDrive = hardwareMap.get(
+            DcMotor.class,
+            "leftFrontDrive"
+        );
+        DcMotor rightFrontDrive = hardwareMap.get(
+            DcMotor.class,
+            "rightFrontDrive"
+        );
         DcMotor leftBackDrive = hardwareMap.get(DcMotor.class, "leftBackDrive");
-        DcMotor rightBackDrive = hardwareMap.get(DcMotor.class, "rightBackDrive");
+        DcMotor rightBackDrive = hardwareMap.get(
+            DcMotor.class,
+            "rightBackDrive"
+        );
 
         DcMotor intake = hardwareMap.get(DcMotor.class, "intake"); // port 2
         Servo hood = hardwareMap.get(Servo.class, "hood");
@@ -90,14 +99,23 @@ public class Mechanum extends LinearOpMode {
 
             // --- Drivetrain ---
             // Standard Mecanum drive logic
-            double y = Y_REVERSED ? -gamepad1.left_stick_y : gamepad1.left_stick_y;
-            double x = X_REVERSED ? -gamepad1.left_stick_x : gamepad1.left_stick_x;
-            double rx = RX_REVERSED ? -gamepad1.right_stick_x : gamepad1.right_stick_x;
+            double y = Y_REVERSED
+                ? -gamepad1.left_stick_y
+                : gamepad1.left_stick_y;
+            double x = X_REVERSED
+                ? -gamepad1.left_stick_x
+                : gamepad1.left_stick_x;
+            double rx = RX_REVERSED
+                ? -gamepad1.right_stick_x
+                : gamepad1.right_stick_x;
 
             // Denominator is the largest motor power (absolute value) or 1
             // This ensures all the powers maintain the same ratio, but only when
             // at least one is out of the range [-1, 1]
-            double denominator = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1);
+            double denominator = Math.max(
+                Math.abs(y) + Math.abs(x) + Math.abs(rx),
+                1
+            );
             double leftFrontPower = (y + x + rx) / denominator;
             double leftBackPower = (y - x + rx) / denominator;
             double rightFrontPower = (y - x - rx) / denominator;
@@ -118,9 +136,13 @@ public class Mechanum extends LinearOpMode {
             // Manual Turret Control
             if (!autoAim) {
                 if (gamepad2.dpad_left || gamepad1.dpad_left) {
-                    turret.setManualTargetAngle(turret.getCurrentAngle() + MANUAL_TURRET_INCREMENT);
+                    turret.setManualTargetAngle(
+                        turret.getCurrentAngle() + MANUAL_TURRET_INCREMENT
+                    );
                 } else if (gamepad2.dpad_right || gamepad1.dpad_right) {
-                    turret.setManualTargetAngle(turret.getCurrentAngle() - MANUAL_TURRET_INCREMENT);
+                    turret.setManualTargetAngle(
+                        turret.getCurrentAngle() - MANUAL_TURRET_INCREMENT
+                    );
                 }
             }
 
@@ -141,9 +163,11 @@ public class Mechanum extends LinearOpMode {
 
             // --- Telemetry ---
             telemetry.addData("Hood Position", "%.2f", hoodPosition);
-            if (turret.isTracking()) {
-                telemetry.addData("Target Distance", "%.2f inches", turret.getLastKnownDistance());
-            }
+            telemetry.addData(
+                "Target Distance",
+                "%.2f inches",
+                turret.getLastKnownDistance()
+            );
             // The TurretController handles its own telemetry now.
             telemetry.update();
         }

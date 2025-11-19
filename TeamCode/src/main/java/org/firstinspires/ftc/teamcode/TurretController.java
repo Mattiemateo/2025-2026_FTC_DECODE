@@ -11,12 +11,11 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.util.ElapsedTime;
+import java.util.List;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
-
-import java.util.List;
 
 @Configurable
 public class TurretController {
@@ -28,8 +27,12 @@ public class TurretController {
     private Telemetry telemetry;
 
     // --- Constants ---
-    private static final double TICKS_PER_DEGREE = (28 * 20 * 95.0 / 28.0) / 360.0;
-    public static double P = 15.0, I = 0.0, D = 0.0, F = 0.0;
+    private static final double TICKS_PER_DEGREE =
+        ((28 * 20 * 95.0) / 28.0) / 360.0;
+    public static double P = 15.0,
+        I = 0.0,
+        D = 0.0,
+        F = 0.0;
     public static double TURRET_MAX_POWER = 0.8;
     public static double TARGET_LOST_TIMEOUT = 2.0;
 
@@ -50,15 +53,21 @@ public class TurretController {
             imu = hardwareMap.get(IMU.class, "imu");
             // TODO: Adjust the orientation parameters to match your robot's configuration.
             // This is for a Control Hub that is mounted horizontally with the logo facing up and the USB ports facing forward.
-            IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
-                RevHubOrientationOnRobot.LogoFacingDirection.UP,
-                RevHubOrientationOnRobot.UsbFacingDirection.FORWARD));
+            IMU.Parameters parameters = new IMU.Parameters(
+                new RevHubOrientationOnRobot(
+                    RevHubOrientationOnRobot.LogoFacingDirection.UP,
+                    RevHubOrientationOnRobot.UsbFacingDirection.FORWARD
+                )
+            );
             imu.initialize(parameters);
 
             turretMotor = hardwareMap.get(DcMotorEx.class, "aim");
             turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-            turretMotor.setPIDFCoefficients(DcMotor.RunMode.RUN_TO_POSITION, new PIDFCoefficients(P, I, D, F));
+            turretMotor.setPIDFCoefficients(
+                DcMotor.RunMode.RUN_TO_POSITION,
+                new PIDFCoefficients(P, I, D, F)
+            );
 
             limelight = hardwareMap.get(Limelight3A.class, "limelight");
             limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
@@ -97,12 +106,18 @@ public class TurretController {
             Pose3D botPose = result.getBotpose();
             if (botPose != null) {
                 // Calculate the 2D distance to the field origin (0,0)
-                this.lastKnownDistance = Math.hypot(botPose.getPosition().x, botPose.getPosition().y);
+                this.lastKnownDistance = Math.hypot(
+                    botPose.getPosition().x,
+                    botPose.getPosition().y
+                );
             }
         }
 
-        if (targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT) {
-            double desiredTurretAngle = lastKnownTargetAngleField - robotHeading;
+        if (
+            targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT
+        ) {
+            double desiredTurretAngle =
+                lastKnownTargetAngleField - robotHeading;
             setTargetAngleInternal(desiredTurretAngle);
         } else {
             turretMotor.setPower(0);
@@ -152,7 +167,8 @@ public class TurretController {
 
     private boolean hasValidTarget(LLResult result) {
         if (result == null || !result.isValid()) return false;
-        List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
+        List<LLResultTypes.FiducialResult> fiducials =
+            result.getFiducialResults();
         return fiducials != null && !fiducials.isEmpty();
     }
 
@@ -168,11 +184,24 @@ public class TurretController {
     }
 
     private void updateTelemetry() {
-        telemetry.addData("Turret Mode", autoAimEnabled ? "Auto-Aim" : "Manual");
+        telemetry.addData(
+            "Turret Mode",
+            autoAimEnabled ? "Auto-Aim" : "Manual"
+        );
         telemetry.addData("Turret Angle", "%.1f°", getCurrentAngle());
         telemetry.addData("Robot Heading", "%.1f°", getRobotHeading());
-        if(autoAimEnabled) {
-            telemetry.addData("Tracking Status", isTracking() ? (targetLostTimer.seconds() > 0.1 ? "IMU" : "Vision") : "Searching");
+        if (autoAimEnabled) {
+            telemetry.addData(
+                "Tracking Status",
+                isTracking()
+                    ? (targetLostTimer.seconds() > 0.1 ? "IMU" : "Vision")
+                    : "Searching"
+            );
+            telemetry.addData(
+                "Target Distance",
+                "%.2f inches",
+                lastKnownDistance
+            );
         }
     }
 }
