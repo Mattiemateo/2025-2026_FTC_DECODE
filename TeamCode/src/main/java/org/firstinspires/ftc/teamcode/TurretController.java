@@ -106,14 +106,47 @@ public class TurretController {
             targetWasVisible = true;
             targetLostTimer.reset();
 
-            // Calculate and store distance using botpose
+            // Calculate and store distance
+            // Try multiple methods in order of preference
             Pose3D botPose = result.getBotpose();
             if (botPose != null) {
-                // Calculate the 2D distance to the field origin (0,0)
+                // Method 1: Use MegaTag botpose for distance to field origin (0,0)
                 this.lastKnownDistance = Math.hypot(
                     botPose.getPosition().x,
                     botPose.getPosition().y
                 );
+            } else {
+                // Method 2: Use average distance from individual AprilTag detections
+                double avgDist = result.getBotposeAvgDist();
+                if (avgDist > 0) {
+                    this.lastKnownDistance = avgDist;
+                } else {
+                    // Method 3: Calculate distance from first detected fiducial
+                    List<LLResultTypes.FiducialResult> fiducials =
+                        result.getFiducialResults();
+                    if (fiducials != null && !fiducials.isEmpty()) {
+                        LLResultTypes.FiducialResult fiducial = fiducials.get(
+                            0
+                        );
+                        // Get the target-space position (distance in X, Y, Z from camera)
+                        double[] targetSpaceTranslation =
+                            fiducial.getTargetXYZ();
+                        if (
+                            targetSpaceTranslation != null &&
+                            targetSpaceTranslation.length >= 3
+                        ) {
+                            // Calculate 3D distance from camera to target
+                            this.lastKnownDistance = Math.sqrt(
+                                targetSpaceTranslation[0] *
+                                        targetSpaceTranslation[0] +
+                                    targetSpaceTranslation[1] *
+                                    targetSpaceTranslation[1] +
+                                    targetSpaceTranslation[2] *
+                                    targetSpaceTranslation[2]
+                            );
+                        }
+                    }
+                }
             }
         }
 
