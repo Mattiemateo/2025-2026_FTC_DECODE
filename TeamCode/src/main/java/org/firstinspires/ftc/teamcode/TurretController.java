@@ -99,8 +99,10 @@ public class TurretController {
         if (hasValidTarget(result)) {
             // TARGET VISIBLE: Update the field-centric target angle
             double tx = result.getFiducialResults().get(0).getTargetXDegrees();
-            // Field angle = Robot heading + Turret angle relative to robot + Target offset
-            lastKnownTargetAngleField = robotHeading + currentTurretAngle + tx;
+            // Field angle = Robot heading + Turret angle relative to robot - Target offset
+            // NOTE: tx is negated because Limelight tx is positive when target is to the RIGHT,
+            // but we need to ADD to the angle when target is to the LEFT (counterclockwise)
+            lastKnownTargetAngleField = robotHeading + currentTurretAngle - tx;
             targetWasVisible = true;
             targetLostTimer.reset();
 
