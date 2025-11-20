@@ -110,6 +110,13 @@ public class TurretController {
         LLResult result = limelight.getLatestResult();
         if (hasValidTarget(result)) {
             // TARGET VISIBLE: Track directly using vision
+
+            // If we were searching, stop and transition back to position control
+            if (isSearching) {
+                turretMotor.setPower(0); // Stop the search rotation
+                isSearching = false;
+            }
+
             double tx = result.getFiducialResults().get(0).getTargetXDegrees();
 
             // Store the field-centric angle for use when target is lost
