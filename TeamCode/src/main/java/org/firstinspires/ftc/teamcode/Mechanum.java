@@ -137,11 +137,11 @@ public class Mechanum extends LinearOpMode {
             if (!autoAim) {
                 if (gamepad2.dpad_left || gamepad1.dpad_left) {
                     turret.setManualTargetAngle(
-                        turret.getCurrentAngle() + MANUAL_TURRET_INCREMENT
+                        turret.getCurrentAngle() - MANUAL_TURRET_INCREMENT
                     );
                 } else if (gamepad2.dpad_right || gamepad1.dpad_right) {
                     turret.setManualTargetAngle(
-                        turret.getCurrentAngle() - MANUAL_TURRET_INCREMENT
+                        turret.getCurrentAngle() + MANUAL_TURRET_INCREMENT
                     );
                 }
             }
