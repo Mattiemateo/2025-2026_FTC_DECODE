@@ -14,6 +14,8 @@ public class Mechanum extends LinearOpMode {
     public static double MANUAL_TURRET_INCREMENT = 4.0; // degrees
     public static double HOOD_INCREMENT = 0.05;
     public static double SLOW_MODE_SCALE = 0.25;
+    public static double FLIPPER_IDLE_POSITION = 0.8;
+    public static double FLIPPER_LAUNCH_POSITION = 0.5;
 
     public static boolean Y_REVERSED = false;
     public static boolean X_REVERSED = true;
@@ -39,6 +41,7 @@ public class Mechanum extends LinearOpMode {
         DcMotor intake = hardwareMap.get(DcMotor.class, "intake"); // port 2
         Servo hood = hardwareMap.get(Servo.class, "hood");
         DcMotor flywheel = hardwareMap.get(DcMotor.class, "flywheel"); // port 0
+        Servo flipper = hardwareMap.get(Servo.class, "flipper"); //port 5
 
         // --- Controller Initialization ---
         TurretController turret = new TurretController();
@@ -70,13 +73,14 @@ public class Mechanum extends LinearOpMode {
         boolean intakeOn = false;
         boolean lastCirclePressed = false;
 
-        // Initialize hardware to starting positions
-        hood.setPosition(hoodPosition);
-
         telemetry.addData("Status", "Initialized");
         telemetry.update();
 
         waitForStart();
+
+        // Initialize hardware to starting positions
+        hood.setPosition(hoodPosition);
+        flipper.setPosition(FLIPPER_IDLE_POSITION);
 
         while (opModeIsActive()) {
             // --- Auto-Aim Toggle ---
@@ -132,6 +136,12 @@ public class Mechanum extends LinearOpMode {
             // --- Subsystems ---
             intake.setPower(intakeOn ? 1 : 0);
             flywheel.setPower(gamepad2.cross || gamepad1.cross ? 1 : 0);
+
+            if (gamepad1.left_bumper) {
+                flipper.setPosition(FLIPPER_LAUNCH_POSITION);
+            } else {
+                flipper.setPosition(FLIPPER_IDLE_POSITION);
+            }
 
             // Manual Turret Control
             if (!autoAim) {
