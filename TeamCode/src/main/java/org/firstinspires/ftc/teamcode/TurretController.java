@@ -29,13 +29,15 @@ public class TurretController {
     // --- Constants ---
     private static final double TICKS_PER_DEGREE =
         ((28 * 20 * 95.0) / 28.0) / 360.0;
-    public static double P = 17.0,
+    public static double P = 15.0,
         I = 0.0,
         D = 0.0,
         F = 0.0;
     public static double TURRET_MAX_POWER = 0.8;
     public static double TARGET_LOST_TIMEOUT = 2.0;
-    public static double SEARCH_SPEED = 0.2; // Slow rotation speed for searching (0.2 = 20% power)
+    public static double SEARCH_INITIAL_ANGLE = 15.0; // Initial search sweep angle
+    public static double SEARCH_ANGLE_INCREMENT = 20.0; // Angle increment per sweep
+    public static double SEARCH_MAX_ANGLE = 135.0; // Maximum search sweep angle
     public static boolean IMU_SEARCH_ENABLED = true; // Enable/disable IMU-based search when target is lost
     public static int LIMELIGHT_PIPELINE = 8; // this should probably stay like this
 
@@ -47,6 +49,9 @@ public class TurretController {
     private boolean targetWasVisible = false;
     private final ElapsedTime targetLostTimer = new ElapsedTime();
     private boolean isSearching = false;
+    private double searchAngle = SEARCH_INITIAL_ANGLE; // Current search sweep angle
+    private double searchCenterAngle = 0.0; // Center point of the search
+    private boolean searchingRight = true; // Direction of current search sweep
 
     public void init(HardwareMap hardwareMap, Telemetry telemetry) {
         this.telemetry = telemetry;
@@ -115,6 +120,8 @@ public class TurretController {
             if (isSearching) {
                 turretMotor.setPower(0); // Stop the search rotation
                 isSearching = false;
+                // Reset search angle for next time
+                searchAngle = SEARCH_INITIAL_ANGLE;
             }
 
             double tx = result.getFiducialResults().get(0).getTargetXDegrees();
@@ -189,13 +196,43 @@ public class TurretController {
             isSearching = false;
         } else {
             // TARGET LOST: IMU tracking disabled or timeout expired
-            // Start slow 360-degree search
+            // Start oscillating search pattern
             targetWasVisible = false;
-            isSearching = true;
 
-            // Switch to velocity control for continuous rotation
-            turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-            turretMotor.setPower(SEARCH_SPEED); // Slow continuous rotation
+            if (!isSearching) {
+                // Just started searching - record the center position
+                isSearching = true;
+                searchCenterAngle = currentTurretAngle;
+                searchAngle = SEARCH_INITIAL_ANGLE;
+                searchingRight = true;
+            }
+
+            // Check if we've reached the current search limit
+            double currentAngle = getCurrentAngle();
+            double targetAngle;
+
+            if (searchingRight) {
+                targetAngle = searchCenterAngle + searchAngle;
+                // If we've reached or passed the right limit, switch direction
+                if (currentAngle >= targetAngle - 2) {
+                    // 2 degree tolerance
+                    searchingRight = false;
+                }
+            } else {
+                targetAngle = searchCenterAngle - searchAngle;
+                // If we've reached or passed the left limit, switch direction and increase angle
+                if (currentAngle <= targetAngle + 2) {
+                    // 2 degree tolerance
+                    searchingRight = true;
+                    // Increase search angle for next sweep, up to maximum
+                    searchAngle = Math.min(
+                        searchAngle + SEARCH_ANGLE_INCREMENT,
+                        SEARCH_MAX_ANGLE
+                    );
+                }
+            }
+
+            setTargetAngleInternal(targetAngle);
         }
     }
 
