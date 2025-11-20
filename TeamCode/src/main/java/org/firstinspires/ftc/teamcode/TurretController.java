@@ -29,14 +29,14 @@ public class TurretController {
     // --- Constants ---
     private static final double TICKS_PER_DEGREE =
         ((28 * 20 * 95.0) / 28.0) / 360.0;
-    public static double P = 15.0,
+    public static double P = 17.0,
         I = 0.0,
         D = 0.0,
         F = 0.0;
     public static double TURRET_MAX_POWER = 0.8;
     public static double TARGET_LOST_TIMEOUT = 2.0;
-    public static double SEARCH_SPEED = 0.15; // Slow rotation speed for searching (0.15 = 15% power)
-
+    public static double SEARCH_SPEED = 0.2; // Slow rotation speed for searching (0.2 = 20% power)
+    public static boolean IMU_TRACKING_ENABLED = true; // Enable/disable IMU compensation when target is lost
     public static int LIMELIGHT_PIPELINE = 8; // this should probably stay like this
 
     // --- State ---
@@ -170,9 +170,11 @@ public class TurretController {
                 telemetry.addData("Distance Method", "No fiducials detected");
             }
         } else if (
-            targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT
+            targetWasVisible &&
+            targetLostTimer.seconds() < TARGET_LOST_TIMEOUT &&
+            IMU_TRACKING_ENABLED
         ) {
-            // TARGET LOST: Use IMU to maintain field-centric aim
+            // TARGET LOST: Use IMU to maintain field-centric aim (if enabled)
             // Calculate turret angle needed to point at the last known field-centric target
             // This compensates for robot rotation automatically
             // Note: Negating robotHeading to fix reversed IMU compensation
