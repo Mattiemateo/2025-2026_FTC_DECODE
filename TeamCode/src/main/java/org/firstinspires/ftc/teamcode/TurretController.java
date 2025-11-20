@@ -120,7 +120,8 @@ public class TurretController {
             double tx = result.getFiducialResults().get(0).getTargetXDegrees();
 
             // Store the field-centric angle for use when target is lost
-            lastKnownTargetAngleField = robotHeading + currentTurretAngle + tx;
+            // Note: Negating robotHeading to fix reversed IMU compensation
+            lastKnownTargetAngleField = -robotHeading + currentTurretAngle + tx;
             targetWasVisible = true;
             targetLostTimer.reset();
 
@@ -174,8 +175,9 @@ public class TurretController {
             // TARGET LOST: Use IMU to maintain field-centric aim
             // Calculate turret angle needed to point at the last known field-centric target
             // This compensates for robot rotation automatically
+            // Note: Negating robotHeading to fix reversed IMU compensation
             double desiredTurretAngle =
-                lastKnownTargetAngleField - robotHeading;
+                lastKnownTargetAngleField - (-robotHeading);
 
             // Normalize angle to [-180, 180] to avoid the turret taking the long way
             while (desiredTurretAngle > 180) desiredTurretAngle -= 360;
