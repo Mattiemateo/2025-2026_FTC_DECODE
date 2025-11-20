@@ -134,10 +134,14 @@ public class Mechanum extends LinearOpMode {
             rightBackDrive.setPower(rightBackPower * scale);
 
             // --- Subsystems ---
-            intake.setPower(intakeOn ? 1 : 0);
-            flywheel.setPower(gamepad2.cross || gamepad1.cross ? 1 : 0);
+            boolean invertIntake =
+                gamepad1.right_bumper || gamepad2.right_bumper;
+            intake.setPower(intakeOn ? invertIntake ? -1 : 1 : 0);
+            flywheel.setPower(
+                gamepad2.left_bumper || gamepad1.left_bumper ? 1 : 0
+            );
 
-            if (gamepad1.left_bumper) {
+            if (gamepad1.left_trigger > 0) {
                 flipper.setPosition(FLIPPER_LAUNCH_POSITION);
             } else {
                 flipper.setPosition(FLIPPER_IDLE_POSITION);
