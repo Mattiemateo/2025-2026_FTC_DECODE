@@ -119,31 +119,45 @@ public class TurretController {
             double desiredTurretAngle = currentTurretAngle + tx;
             setTargetAngleInternal(desiredTurretAngle);
 
-            // Calculate and store distance
-            // Try multiple methods in order of preference
-            Pose3D botPose_MT2 = result.getBotpose_MT2();
-            if (botPose_MT2 != null) {
-                // Method 1 (Best): Use MegaTag 2 (IMU-fused) for distance to field origin (0,0)
-                this.lastKnownDistance = Math.hypot(
-                    botPose_MT2.getPosition().x,
-                    botPose_MT2.getPosition().y
-                );
-            } else {
-                Pose3D botPose = result.getBotpose();
-                if (botPose != null) {
-                    // Method 2: Use MegaTag 1 botpose for distance to field origin (0,0)
-                    this.lastKnownDistance = Math.hypot(
-                        botPose.getPosition().x,
-                        botPose.getPosition().y
+            // Calculate and store distance to the AprilTag target
+            List<LLResultTypes.FiducialResult> fiducials =
+                result.getFiducialResults();
+            if (fiducials != null && !fiducials.isEmpty()) {
+                // Get the first detected AprilTag
+                LLResultTypes.FiducialResult fiducial = fiducials.get(0);
+
+                // Get robot pose relative to the AprilTag (most useful for distance)
+                Pose3D robotPoseTargetSpace =
+                    fiducial.getRobotPoseTargetSpace();
+                if (robotPoseTargetSpace != null) {
+                    // Calculate 3D distance from robot to AprilTag
+                    double x = robotPoseTargetSpace.getPosition().x;
+                    double y = robotPoseTargetSpace.getPosition().y;
+                    double z = robotPoseTargetSpace.getPosition().z;
+                    this.lastKnownDistance = Math.sqrt(x * x + y * y + z * z);
+                    telemetry.addData(
+                        "Distance Method",
+                        "RobotPoseTargetSpace"
+                    );
+                    telemetry.addData(
+                        "Distance (X,Y,Z)",
+                        "%.1f, %.1f, %.1f",
+                        x,
+                        y,
+                        z
                     );
                 } else {
-                    // Method 3: Use average distance from individual AprilTag detections
-                    double avgDist = result.getBotposeAvgDist();
-                    if (avgDist > 0) {
-                        this.lastKnownDistance = avgDist;
-                    }
-                    // If avgDist is 0 or negative, lastKnownDistance remains at its previous value
+                    telemetry.addData(
+                        "Distance Method",
+                        "RobotPoseTargetSpace NULL"
+                    );
+                    telemetry.addData(
+                        "Distance Warning",
+                        "Enable '3D' in Limelight pipeline"
+                    );
                 }
+            } else {
+                telemetry.addData("Distance Method", "No fiducials detected");
             }
         } else if (
             targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT
