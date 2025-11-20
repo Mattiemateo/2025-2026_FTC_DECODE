@@ -17,7 +17,7 @@ public class Mechanum extends LinearOpMode {
 
     public static boolean Y_REVERSED = false;
     public static boolean X_REVERSED = true;
-    public static boolean RX_REVERSED = false;
+    public static boolean RX_REVERSED = true;
 
     @Override
     public void runOpMode() {
