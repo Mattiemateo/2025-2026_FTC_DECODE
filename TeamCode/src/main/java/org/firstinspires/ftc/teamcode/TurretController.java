@@ -281,11 +281,6 @@ public class TurretController {
                 status = "Searching";
             }
             telemetry.addData("Tracking Status", status);
-            telemetry.addData(
-                "Target Distance",
-                "%.2f inches",
-                lastKnownDistance
-            );
         }
     }
 }

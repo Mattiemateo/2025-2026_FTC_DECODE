@@ -165,7 +165,7 @@ public class Mechanum extends LinearOpMode {
             telemetry.addData("Hood Position", "%.2f", hoodPosition);
             telemetry.addData(
                 "Target Distance",
-                "%.2f inches",
+                "%.2f m",
                 turret.getLastKnownDistance()
             );
             // The TurretController handles its own telemetry now.
