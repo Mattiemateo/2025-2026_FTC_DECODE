@@ -36,7 +36,7 @@ public class TurretController {
     public static double TURRET_MAX_POWER = 0.8;
     public static double TARGET_LOST_TIMEOUT = 2.0;
     public static double SEARCH_SPEED = 0.2; // Slow rotation speed for searching (0.2 = 20% power)
-    public static boolean IMU_TRACKING_ENABLED = true; // Enable/disable IMU compensation when target is lost
+    public static boolean IMU_SEARCH_ENABLED = true; // Enable/disable IMU-based search when target is lost
     public static int LIMELIGHT_PIPELINE = 8; // this should probably stay like this
 
     // --- State ---
@@ -172,9 +172,9 @@ public class TurretController {
         } else if (
             targetWasVisible &&
             targetLostTimer.seconds() < TARGET_LOST_TIMEOUT &&
-            IMU_TRACKING_ENABLED
+            IMU_SEARCH_ENABLED
         ) {
-            // TARGET LOST: Use IMU to maintain field-centric aim (if enabled)
+            // TARGET LOST: Use IMU-based search to maintain field-centric aim (if enabled)
             // Calculate turret angle needed to point at the last known field-centric target
             // This compensates for robot rotation automatically
             // Note: Negating robotHeading to fix reversed IMU compensation
@@ -188,7 +188,8 @@ public class TurretController {
             setTargetAngleInternal(desiredTurretAngle);
             isSearching = false;
         } else {
-            // TARGET LOST FOR TOO LONG: Start slow 360-degree search
+            // TARGET LOST: IMU tracking disabled or timeout expired
+            // Start slow 360-degree search
             targetWasVisible = false;
             isSearching = true;
 
