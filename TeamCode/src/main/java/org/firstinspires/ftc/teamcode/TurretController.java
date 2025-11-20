@@ -83,6 +83,16 @@ public class TurretController {
     }
 
     public void update() {
+        // Update robot orientation for MegaTag 2 (fuses IMU with vision for better accuracy)
+        if (imu != null && limelight != null) {
+            try {
+                double robotYaw = getRobotHeading();
+                limelight.updateRobotOrientation(robotYaw);
+            } catch (Exception e) {
+                // Silently continue if orientation update fails
+            }
+        }
+
         if (autoAimEnabled) {
             updateAutoAim();
         } else {
@@ -111,20 +121,29 @@ public class TurretController {
 
             // Calculate and store distance
             // Try multiple methods in order of preference
-            Pose3D botPose = result.getBotpose();
-            if (botPose != null) {
-                // Method 1: Use MegaTag botpose for distance to field origin (0,0)
+            Pose3D botPose_MT2 = result.getBotpose_MT2();
+            if (botPose_MT2 != null) {
+                // Method 1 (Best): Use MegaTag 2 (IMU-fused) for distance to field origin (0,0)
                 this.lastKnownDistance = Math.hypot(
-                    botPose.getPosition().x,
-                    botPose.getPosition().y
+                    botPose_MT2.getPosition().x,
+                    botPose_MT2.getPosition().y
                 );
             } else {
-                // Method 2: Use average distance from individual AprilTag detections
-                double avgDist = result.getBotposeAvgDist();
-                if (avgDist > 0) {
-                    this.lastKnownDistance = avgDist;
+                Pose3D botPose = result.getBotpose();
+                if (botPose != null) {
+                    // Method 2: Use MegaTag 1 botpose for distance to field origin (0,0)
+                    this.lastKnownDistance = Math.hypot(
+                        botPose.getPosition().x,
+                        botPose.getPosition().y
+                    );
+                } else {
+                    // Method 3: Use average distance from individual AprilTag detections
+                    double avgDist = result.getBotposeAvgDist();
+                    if (avgDist > 0) {
+                        this.lastKnownDistance = avgDist;
+                    }
+                    // If avgDist is 0 or negative, lastKnownDistance remains at its previous value
                 }
-                // If avgDist is 0 or negative, lastKnownDistance remains at its previous value
             }
         } else if (
             targetWasVisible && targetLostTimer.seconds() < TARGET_LOST_TIMEOUT
