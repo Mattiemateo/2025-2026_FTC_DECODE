@@ -34,6 +34,8 @@ public class TurretController {
         D = 0.0,
         F = 0.0;
     public static double TURRET_MAX_POWER = 0.8;
+    public static double SEARCH_POWER = 0.3; // Slower power for search movements
+    public static double SEARCH_DWELL_TIME = 0.3; // Time to wait at each position (seconds)
     public static double TARGET_LOST_TIMEOUT = 2.0;
     public static double SEARCH_INITIAL_ANGLE = 15.0; // Initial search sweep angle
     public static double SEARCH_ANGLE_INCREMENT = 20.0; // Angle increment per sweep
@@ -52,6 +54,8 @@ public class TurretController {
     private double searchAngle = SEARCH_INITIAL_ANGLE; // Current search sweep angle
     private double searchCenterAngle = 0.0; // Center point of the search
     private boolean searchingRight = true; // Direction of current search sweep
+    private final ElapsedTime searchDwellTimer = new ElapsedTime(); // Timer for dwelling at each position
+    private boolean isDwelling = false; // Whether we're currently dwelling at a position
 
     public void init(HardwareMap hardwareMap, Telemetry telemetry) {
         this.telemetry = telemetry;
@@ -205,11 +209,24 @@ public class TurretController {
                 searchCenterAngle = currentTurretAngle;
                 searchAngle = SEARCH_INITIAL_ANGLE;
                 searchingRight = true;
+                isDwelling = false;
+            }
+
+            // Check if we're dwelling (waiting at a position)
+            if (isDwelling) {
+                // Wait for dwell time before moving to next position
+                if (searchDwellTimer.seconds() >= SEARCH_DWELL_TIME) {
+                    isDwelling = false; // Done dwelling, move to next position
+                } else {
+                    // Still dwelling, don't move yet
+                    return;
+                }
             }
 
             // Check if we've reached the current search limit
             double currentAngle = getCurrentAngle();
             double targetAngle;
+            boolean shouldMove = false;
 
             if (searchingRight) {
                 targetAngle = searchCenterAngle + searchAngle;
@@ -217,6 +234,10 @@ public class TurretController {
                 if (currentAngle >= targetAngle - 2) {
                     // 2 degree tolerance
                     searchingRight = false;
+                    isDwelling = true;
+                    searchDwellTimer.reset();
+                } else {
+                    shouldMove = true;
                 }
             } else {
                 targetAngle = searchCenterAngle - searchAngle;
@@ -224,15 +245,26 @@ public class TurretController {
                 if (currentAngle <= targetAngle + 2) {
                     // 2 degree tolerance
                     searchingRight = true;
+                    isDwelling = true;
+                    searchDwellTimer.reset();
                     // Increase search angle for next sweep, up to maximum
                     searchAngle = Math.min(
                         searchAngle + SEARCH_ANGLE_INCREMENT,
                         SEARCH_MAX_ANGLE
                     );
+                } else {
+                    shouldMove = true;
                 }
             }
 
-            setTargetAngleInternal(targetAngle);
+            if (shouldMove) {
+                // Move to target position with reduced power
+                int targetPositionTicks = (int) (targetAngle *
+                    TICKS_PER_DEGREE);
+                turretMotor.setTargetPosition(targetPositionTicks);
+                turretMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+                turretMotor.setPower(SEARCH_POWER); // Use slower search power
+            }
         }
     }
 
