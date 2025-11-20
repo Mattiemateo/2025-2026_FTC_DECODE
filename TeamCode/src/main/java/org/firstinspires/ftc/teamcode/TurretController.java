@@ -35,6 +35,7 @@ public class TurretController {
         F = 0.0;
     public static double TURRET_MAX_POWER = 0.8;
     public static double TARGET_LOST_TIMEOUT = 2.0;
+    public static double SEARCH_SPEED = 0.15; // Slow rotation speed for searching (0.15 = 15% power)
 
     public static int LIMELIGHT_PIPELINE = 8; // this should probably stay like this
 
@@ -45,6 +46,7 @@ public class TurretController {
     private double lastKnownDistance = 0.0;
     private boolean targetWasVisible = false;
     private final ElapsedTime targetLostTimer = new ElapsedTime();
+    private boolean isSearching = false;
 
     public void init(HardwareMap hardwareMap, Telemetry telemetry) {
         this.telemetry = telemetry;
@@ -173,10 +175,15 @@ public class TurretController {
             while (desiredTurretAngle < -180) desiredTurretAngle += 360;
 
             setTargetAngleInternal(desiredTurretAngle);
+            isSearching = false;
         } else {
-            // Target lost for too long - stop and reset
-            turretMotor.setPower(0);
+            // TARGET LOST FOR TOO LONG: Start slow 360-degree search
             targetWasVisible = false;
+            isSearching = true;
+
+            // Switch to velocity control for continuous rotation
+            turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+            turretMotor.setPower(SEARCH_SPEED); // Slow continuous rotation
         }
     }
 
@@ -256,12 +263,17 @@ public class TurretController {
         telemetry.addData("Turret Angle", "%.1f°", getCurrentAngle());
         telemetry.addData("Robot Heading", "%.1f°", getRobotHeading());
         if (autoAimEnabled) {
-            telemetry.addData(
-                "Tracking Status",
-                isTracking()
-                    ? (targetLostTimer.seconds() > 0.1 ? "IMU" : "Vision")
-                    : "Searching"
-            );
+            String status;
+            if (isTracking()) {
+                status = targetLostTimer.seconds() > 0.1
+                    ? "IMU Tracking"
+                    : "Vision Locked";
+            } else if (isSearching) {
+                status = "Searching (360°)";
+            } else {
+                status = "Searching";
+            }
+            telemetry.addData("Tracking Status", status);
             telemetry.addData(
                 "Target Distance",
                 "%.2f inches",
