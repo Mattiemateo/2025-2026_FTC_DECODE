@@ -16,6 +16,7 @@ public class Mechanum extends LinearOpMode {
     public static double SLOW_MODE_SCALE = 0.25;
     public static double FLIPPER_IDLE_POSITION = 0.8;
     public static double FLIPPER_LAUNCH_POSITION = 0.5;
+    public static double FLYWHEEL_INTERRUPT_DURATION = 0.15; // Seconds to cut flywheel power during launch
 
     public static boolean Y_REVERSED = false;
     public static boolean X_REVERSED = true;
@@ -72,6 +73,10 @@ public class Mechanum extends LinearOpMode {
         double hoodPosition = 0.0;
         boolean intakeOn = false;
         boolean lastCirclePressed = false;
+        boolean lastFlipperPressed = false;
+        com.qualcomm.robotcore.util.ElapsedTime flywheelInterruptTimer =
+            new com.qualcomm.robotcore.util.ElapsedTime();
+        boolean isInterruptingFlywheel = false;
 
         telemetry.addData("Status", "Initialized");
         telemetry.update();
@@ -137,11 +142,37 @@ public class Mechanum extends LinearOpMode {
             boolean invertIntake =
                 gamepad1.right_bumper || gamepad2.right_bumper;
             intake.setPower(intakeOn ? invertIntake ? -1 : 1 : 0);
-            flywheel.setPower(
-                gamepad2.left_bumper || gamepad1.left_bumper ? 1 : 0
-            );
 
-            if (gamepad1.left_trigger > 0) {
+            // Flipper and Flywheel control with power interrupt
+            boolean flipperPressed = gamepad1.right_trigger > 0;
+            boolean flywheelRequested =
+                gamepad2.left_bumper || gamepad1.left_bumper;
+
+            // Detect flipper trigger press (rising edge)
+            if (flipperPressed && !lastFlipperPressed) {
+                // Start flywheel interrupt to give flipper more power
+                isInterruptingFlywheel = true;
+                flywheelInterruptTimer.reset();
+            }
+            lastFlipperPressed = flipperPressed;
+
+            // Check if interrupt duration has expired
+            if (
+                isInterruptingFlywheel &&
+                flywheelInterruptTimer.seconds() >= FLYWHEEL_INTERRUPT_DURATION
+            ) {
+                isInterruptingFlywheel = false;
+            }
+
+            // Set flywheel power (cut during interrupt)
+            if (isInterruptingFlywheel) {
+                flywheel.setPower(0); // Cut power during interrupt
+            } else {
+                flywheel.setPower(flywheelRequested ? 1 : 0);
+            }
+
+            // Set flipper position
+            if (flipperPressed) {
                 flipper.setPosition(FLIPPER_LAUNCH_POSITION);
             } else {
                 flipper.setPosition(FLIPPER_IDLE_POSITION);
