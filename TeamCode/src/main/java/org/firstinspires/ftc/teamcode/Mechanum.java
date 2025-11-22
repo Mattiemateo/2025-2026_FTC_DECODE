@@ -14,8 +14,8 @@ public class Mechanum extends LinearOpMode {
     public static double MANUAL_TURRET_INCREMENT = 4.0; // degrees
     public static double HOOD_INCREMENT = 0.05;
     public static double SLOW_MODE_SCALE = 0.25;
-    public static double FLIPPER_IDLE_POSITION = 0.8;
-    public static double FLIPPER_LAUNCH_POSITION = 0.5;
+    public static double FLIPPER_IDLE_POSITION = 0.1;
+    public static double FLIPPER_LAUNCH_POSITION = 0.9;
     public static double FLYWHEEL_INTERRUPT_DURATION = 0.15; // Seconds to cut flywheel power during launch
 
     public static boolean Y_REVERSED = false;
