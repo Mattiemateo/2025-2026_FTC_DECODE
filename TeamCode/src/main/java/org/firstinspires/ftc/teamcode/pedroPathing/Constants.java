@@ -18,8 +18,8 @@ import java.util.function.ToDoubleBiFunction;
 public class Constants {
     public static FollowerConstants followerConstants = new FollowerConstants()
             .mass(9)
-            .forwardZeroPowerAcceleration(-53.4) //TODO test forwardzeropoweraccelerationtuner
-            .lateralZeroPowerAcceleration(-74.7) //TODO test lateralzeropoweraccelerationtuner
+            .forwardZeroPowerAcceleration(-44) //TODO test forwardzeropoweraccelerationtuner -45, -43 -
+            .lateralZeroPowerAcceleration(-72) //TODO test lateralzeropoweraccelerationtuner -73
             .translationalPIDFCoefficients(new PIDFCoefficients(0.08, 0, 0.01, 0)) //TODO test panels translation
             .headingPIDFCoefficients(new PIDFCoefficients(1.2, 0, 0.01, 0)) //TODO test panels heading
             .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.003,0.0,0.005,0.6,0.0)) //TODO test panels drive
@@ -37,8 +37,8 @@ public class Constants {
             .rightFrontMotorDirection(DcMotorSimple.Direction.REVERSE)
             .rightRearMotorDirection(DcMotorSimple.Direction.REVERSE)
 
-            .xVelocity(56.2) //TODO test forwardvelocitytuner
-            .yVelocity(40.1); //TODO test lateralvelocitytuner
+            .xVelocity(64.8) //TODO test forwardvelocitytuner
+            .yVelocity(42.1); //TODO test lateralvelocitytuner
 
     public static TwoWheelConstants localizerConstants = new TwoWheelConstants()
             .forwardEncoder_HardwareMapName("leftFrontDrive")
@@ -49,8 +49,8 @@ public class Constants {
             //.forwardEncoderDirection(Encoder.REVERSE)//TDO
             //.strafeEncoderDirection(Encoder.REVERSE)//TDO
 
-            .forwardTicksToInches(0.001946303932)//TDO: Tune
-            .strafeTicksToInches(0.001943990049)//TDO: Tune
+            .forwardTicksToInches(0.002046303932)//TDO: Tune
+            .strafeTicksToInches(0.001723990049)//TDO: Tune
 
             .IMU_HardwareMapName("imu")
             .IMU_Orientation(

@@ -144,7 +144,7 @@ public class Mechanum extends LinearOpMode {
             intake.setPower(intakeOn ? invertIntake ? -1 : 1 : 0);
 
             // Flipper and Flywheel control with power interrupt
-            boolean flipperPressed = gamepad1.right_trigger > 0;
+            boolean flipperPressed = gamepad1.right_trigger > 0 || gamepad2.right_trigger > 0;
             boolean flywheelRequested =
                 gamepad2.left_bumper || gamepad1.left_bumper;
 
