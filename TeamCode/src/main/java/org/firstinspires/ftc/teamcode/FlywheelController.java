@@ -22,10 +22,10 @@ public class FlywheelController {
     // --- PID Coefficients ---
     // These will need tuning for the flywheel
     // F (feedforward) is probably most important for velocity control
-    public static double P = 10.0;
-    public static double I = 0.5;
-    public static double D = 0.0;
-    public static double F = 12.0; // Feedforward - main driver for velocity
+    public static double FLYWHEEL_P = 10.0;
+    public static double FLYWHEEL_I = 0.5;
+    public static double FLYWHEEL_D = 0.0;
+    public static double FLYWHEEL_F = 12.0; // Feedforward - main driver for velocity
 
     // --- Flywheel Settings ---
     public static double IDLE_RPM = 0.0; // RPM when flywheel is "off"
@@ -69,7 +69,7 @@ public class FlywheelController {
             // Set PIDF coefficients for velocity control
             flywheelMotor.setPIDFCoefficients(
                 DcMotor.RunMode.RUN_USING_ENCODER,
-                new PIDFCoefficients(P, I, D, F)
+                new PIDFCoefficients(FLYWHEEL_P, FLYWHEEL_I, FLYWHEEL_D, FLYWHEEL_F)
             );
 
             // Set to velocity control mode
