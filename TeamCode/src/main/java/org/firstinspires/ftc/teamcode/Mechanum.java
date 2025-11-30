@@ -41,12 +41,14 @@ public class Mechanum extends LinearOpMode {
 
         DcMotor intake = hardwareMap.get(DcMotor.class, "intake"); // port 2
         Servo hood = hardwareMap.get(Servo.class, "hood");
-        DcMotor flywheel = hardwareMap.get(DcMotor.class, "flywheel"); // port 0
         Servo flipper = hardwareMap.get(Servo.class, "flipper"); //port 5
 
         // --- Controller Initialization ---
         TurretController turret = new TurretController();
         turret.init(hardwareMap, telemetry);
+
+        FlywheelController flywheel = new FlywheelController();
+        flywheel.init(hardwareMap, telemetry);
 
         // --- Motor & Servo Configuration ---
         leftFrontDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
@@ -54,7 +56,6 @@ public class Mechanum extends LinearOpMode {
         leftBackDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         rightBackDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
-        flywheel.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
 
         // Set motor directions - this is a common configuration
@@ -65,7 +66,6 @@ public class Mechanum extends LinearOpMode {
         rightBackDrive.setDirection(DcMotor.Direction.FORWARD);
 
         intake.setDirection(DcMotor.Direction.FORWARD);
-        flywheel.setDirection(DcMotor.Direction.REVERSE);
 
         // --- State Variables ---
         boolean autoAim = false;
@@ -105,6 +105,7 @@ public class Mechanum extends LinearOpMode {
 
             // --- Update Controllers ---
             turret.update();
+            flywheel.update();
 
             // --- Drivetrain ---
             // Standard Mecanum drive logic
@@ -164,11 +165,23 @@ public class Mechanum extends LinearOpMode {
                 isInterruptingFlywheel = false;
             }
 
-            // Set flywheel power (cut during interrupt)
-            if (isInterruptingFlywheel) {
-                flywheel.setPower(0); // Cut power during interrupt
+            // Flywheel control with PID
+            if (flywheelRequested) {
+                // Use distance from Limelight to set target RPM
+                double distance = turret.getLastKnownDistance();
+                if (distance > 0) {
+                    flywheel.setTargetFromDistance(distance);
+                }
+                flywheel.setEnabled(true);
             } else {
-                flywheel.setPower(flywheelRequested ? 1 : 0);
+                flywheel.setEnabled(false);
+            }
+
+            // Handle power interrupt for flipper
+            if (isInterruptingFlywheel) {
+                flywheel.interruptPower();
+            } else if (flywheelRequested) {
+                flywheel.resumePower();
             }
 
             // Set flipper position
@@ -213,7 +226,8 @@ public class Mechanum extends LinearOpMode {
                 "%.2f m",
                 turret.getLastKnownDistance()
             );
-            // The TurretController handles its own telemetry now.
+            // Flywheel and TurretController handle their own telemetry
+            flywheel.updateTelemetry();
             telemetry.update();
         }
     }
