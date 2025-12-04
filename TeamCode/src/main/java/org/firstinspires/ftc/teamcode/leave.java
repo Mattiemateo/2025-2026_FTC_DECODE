@@ -57,7 +57,7 @@ public class leave extends OpMode {
                     .addPath(
                             new BezierLine(new Pose(56.000, 8.000), new Pose(56.000, 36.000))
                     )
-                    .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(180))
+                    .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(90))
                     .build();
         }
     }

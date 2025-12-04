@@ -41,7 +41,7 @@ public class TurretController {
     public static double SEARCH_ANGLE_INCREMENT = 20.0; // Angle increment per sweep
     public static double SEARCH_MAX_ANGLE = 135.0; // Maximum search sweep angle
     public static boolean IMU_SEARCH_ENABLED = true; // Enable/disable IMU-based search when target is lost
-    public static int LIMELIGHT_PIPELINE = 8; // this should probably stay like this
+    public int LIMELIGHT_PIPELINE = 8; // this should probably stay like this
 
     // --- State ---
     private boolean autoAimEnabled = false;
@@ -66,7 +66,7 @@ public class TurretController {
             // This is for a Control Hub that is mounted horizontally with the logo facing up and the USB ports facing forward.
             IMU.Parameters parameters = new IMU.Parameters(
                 new RevHubOrientationOnRobot(
-                    RevHubOrientationOnRobot.LogoFacingDirection.LEFT,
+                    RevHubOrientationOnRobot.LogoFacingDirection.FORWARD,
                     RevHubOrientationOnRobot.UsbFacingDirection.UP
                 )
             );
@@ -95,6 +95,7 @@ public class TurretController {
 
     public void update() {
         // Update robot orientation for MegaTag 2 (fuses IMU with vision for better accuracy)
+        limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
         if (imu != null && limelight != null) {
             try {
                 double robotYaw = getRobotHeading();
@@ -291,6 +292,13 @@ public class TurretController {
         return turretMotor.getCurrentPosition() / TICKS_PER_DEGREE;
     }
 
+    public void setPipeline(int pipeline) {
+        LIMELIGHT_PIPELINE = pipeline;
+        if (limelight != null) {
+            limelight.pipelineSwitch(pipeline);
+        }
+    }
+
     public boolean isTracking() {
         return autoAimEnabled && targetWasVisible;
     }
@@ -357,4 +365,5 @@ public class TurretController {
             telemetry.addData("Tracking Status", status);
         }
     }
+
 }

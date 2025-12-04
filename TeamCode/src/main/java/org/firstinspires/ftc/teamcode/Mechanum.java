@@ -1,6 +1,7 @@
 package org.firstinspires.ftc.teamcode;
 
 import com.bylazar.configurables.annotations.Configurable;
+import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -14,8 +15,8 @@ public class Mechanum extends LinearOpMode {
     public static double MANUAL_TURRET_INCREMENT = 4.0; // degrees
     public static double HOOD_INCREMENT = 0.05;
     public static double SLOW_MODE_SCALE = 0.25;
-    public static double FLIPPER_IDLE_POSITION = 0.1;
-    public static double FLIPPER_LAUNCH_POSITION = 0.9;
+    public static double FLIPPER_IDLE_POSITION = 0.15;
+    public static double FLIPPER_LAUNCH_POSITION = 0.4;
     public static double FLYWHEEL_INTERRUPT_DURATION = 0.15; // Seconds to cut flywheel power during launch
 
     public static boolean Y_REVERSED = false;
@@ -42,6 +43,7 @@ public class Mechanum extends LinearOpMode {
         DcMotor intake = hardwareMap.get(DcMotor.class, "intake"); // port 2
         Servo hood = hardwareMap.get(Servo.class, "hood");
         Servo flipper = hardwareMap.get(Servo.class, "flipper"); //port 5
+        DigitalChannel modeSwitch = hardwareMap.get(DigitalChannel.class, "mode");
 
         // --- Controller Initialization ---
         TurretController turret = new TurretController();
@@ -49,6 +51,8 @@ public class Mechanum extends LinearOpMode {
 
         FlywheelController flywheel = new FlywheelController();
         flywheel.init(hardwareMap, telemetry);
+
+        modeSwitch.setMode(DigitalChannel.Mode.INPUT);
 
         // --- Motor & Servo Configuration ---
         leftFrontDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
@@ -74,6 +78,7 @@ public class Mechanum extends LinearOpMode {
         boolean intakeOn = false;
         boolean lastCirclePressed = false;
         boolean lastFlipperPressed = false;
+        boolean redMode = false;
         com.qualcomm.robotcore.util.ElapsedTime flywheelInterruptTimer =
             new com.qualcomm.robotcore.util.ElapsedTime();
         boolean isInterruptingFlywheel = false;
@@ -88,6 +93,7 @@ public class Mechanum extends LinearOpMode {
         flipper.setPosition(FLIPPER_IDLE_POSITION);
 
         while (opModeIsActive()) {
+            redMode = !modeSwitch.getState();
             // --- Auto-Aim Toggle ---
             boolean isTrianglePressed = gamepad2.triangle || gamepad1.triangle;
             if (isTrianglePressed && !lastTrianglePressed) {
@@ -219,6 +225,12 @@ public class Mechanum extends LinearOpMode {
                 turret.reset();
             }
 
+            if (redMode) {
+                turret.setPipeline(8);
+            } else {
+                turret.setPipeline(7);
+            }
+
             // --- Telemetry ---
             telemetry.addData("Hood Position", "%.2f", hoodPosition);
             telemetry.addData(
@@ -228,6 +240,7 @@ public class Mechanum extends LinearOpMode {
             );
             // Flywheel and TurretController handle their own telemetry
             flywheel.updateTelemetry();
+            telemetry.addData("Mode", redMode ? "RED" : "BLUE");
             telemetry.update();
         }
     }
