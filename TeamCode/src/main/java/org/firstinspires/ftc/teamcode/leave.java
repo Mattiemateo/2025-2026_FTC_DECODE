@@ -12,7 +12,7 @@ import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@Autonomous(name = "Pedro Pathing Autonomous", group = "Autonomous")
+@Autonomous(name = "Leave Small zone", group = "Autonomous")
 @Configurable // Panels
 public class leave extends OpMode {
 
@@ -63,9 +63,23 @@ public class leave extends OpMode {
     }
 
     public int autonomousPathUpdate() {
-        // Add your state machine Here
-        // Access paths with paths.pathName
-        // Refer to the Pedro Pathing Docs (Auto Example) for an example state machine
+        switch (pathState) {
+            case 0: // Start - follow the path
+                follower.followPath(paths.line1);
+                pathState = 1;
+                break;
+
+            case 1: // Wait for path to complete
+                if (!follower.isBusy()) {
+                    pathState = 2; // Move to next state (done)
+                }
+                break;
+
+            case 2: // Done
+                // Autonomous complete
+                break;
+        }
+
         return pathState;
     }
 }

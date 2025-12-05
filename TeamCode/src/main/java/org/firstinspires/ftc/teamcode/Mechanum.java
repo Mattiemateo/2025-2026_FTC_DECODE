@@ -16,8 +16,8 @@ public class Mechanum extends LinearOpMode {
     public static double HOOD_INCREMENT = 0.05;
     public static double SLOW_MODE_SCALE = 0.25;
     public static double FLIPPER_IDLE_POSITION = 0.15;
-    public static double FLIPPER_LAUNCH_POSITION = 0.4;
-    public static double FLYWHEEL_INTERRUPT_DURATION = 0.15; // Seconds to cut flywheel power during launch
+    public static double FLIPPER_LAUNCH_POSITION = 0.5;
+    public static double FLYWHEEL_INTERRUPT_DURATION = 0.5; // Seconds to cut flywheel power during launch
 
     public static boolean Y_REVERSED = false;
     public static boolean X_REVERSED = true;
@@ -41,7 +41,7 @@ public class Mechanum extends LinearOpMode {
         );
 
         DcMotor intake = hardwareMap.get(DcMotor.class, "intake"); // port 2
-        Servo hood = hardwareMap.get(Servo.class, "hood");
+        Servo hood = hardwareMap.get(Servo.class, "hood"); // port 0
         Servo flipper = hardwareMap.get(Servo.class, "flipper"); //port 5
         DigitalChannel modeSwitch = hardwareMap.get(DigitalChannel.class, "mode");
 
@@ -74,7 +74,7 @@ public class Mechanum extends LinearOpMode {
         // --- State Variables ---
         boolean autoAim = false;
         boolean lastTrianglePressed = false;
-        double hoodPosition = 0.0;
+        double hoodPosition = 0.6;
         boolean intakeOn = false;
         boolean lastCirclePressed = false;
         boolean lastFlipperPressed = false;
@@ -88,11 +88,11 @@ public class Mechanum extends LinearOpMode {
 
         waitForStart();
 
-        // Initialize hardware to starting positions
-        hood.setPosition(hoodPosition);
         flipper.setPosition(FLIPPER_IDLE_POSITION);
 
         while (opModeIsActive()) {
+            //flipper.setPosition(FLIPPER_IDLE_POSITION);
+
             redMode = !modeSwitch.getState();
             // --- Auto-Aim Toggle ---
             boolean isTrianglePressed = gamepad2.triangle || gamepad1.triangle;
@@ -182,6 +182,9 @@ public class Mechanum extends LinearOpMode {
             } else {
                 flywheel.setEnabled(false);
             }
+            if (flywheel.isAtTargetSpeed()){
+                gamepad1.rumble(10);
+            }
 
             // Handle power interrupt for flipper
             if (isInterruptingFlywheel) {
@@ -212,12 +215,12 @@ public class Mechanum extends LinearOpMode {
 
             // Hood Control
             if (gamepad2.dpad_up || gamepad1.dpad_up) {
-                hoodPosition += HOOD_INCREMENT;
-            } else if (gamepad2.dpad_down || gamepad1.dpad_down) {
                 hoodPosition -= HOOD_INCREMENT;
+            } else if (gamepad2.dpad_down || gamepad1.dpad_down) {
+                hoodPosition += HOOD_INCREMENT;
             }
             // Clamp hood position to the valid range [0.0, 1.0]
-            hoodPosition = Math.max(0.0, Math.min(1.0, hoodPosition));
+            hoodPosition = Math.max(0.0, Math.min(0.7, hoodPosition));
             hood.setPosition(hoodPosition);
 
             // Reset turret to zero position
