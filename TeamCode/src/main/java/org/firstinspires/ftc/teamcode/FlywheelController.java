@@ -36,14 +36,14 @@ public class FlywheelController {
     // Format: {distance in meters, target RPM}
     // Add more entries as you test and calibrate
     private static final double[][] DISTANCE_TO_RPM_TABLE = {
-        { 0.5, 1100.0 }, // 0.5m -> 2000 RPM
-        { 1.0, 1400.0 }, // 1.0m -> 2500 RPM
-        { 1.5, 1700.0 }, // 1.5m -> 3000 RPM
-        { 2.0, 2000.0 }, // 2.0m -> 3500 RPM
-        { 2.5, 2250.0 }, // 2.5m -> 4000 RPM
-        { 3.0, 2500.0 }, // 3.0m -> 4500 RPM
-        { 3.5, 2600.0 }, // 3.5m -> 5000 RPM
-        { 4.0, 2700.0 }, // 4.0m -> 5500 RPM
+        { 0.8, 1100.0 }, // 0.5m -> 2000 RPM DONE
+        { 1.0, 1400.0 }, // 1.0m -> 2500 RPM DONE
+        { 1.5, 1500.0 }, // 1.5m -> 3000 RPM SlOWER
+        { 2.0, 1600.0 }, // 2.0m -> 3500 RPM
+        { 2.5, 2050.0 }, // 2.5m -> 4000 RPM
+        { 3.0, 2300.0 }, // 3.0m -> 4500 RPM
+        { 3.5, 2400.0 }, // 3.5m -> 5000 RPM
+        { 4.0, 2600.0 }, // 4.0m -> 5500 RPM
     };
 
     // --- State ---

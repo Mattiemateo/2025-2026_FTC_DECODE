@@ -172,18 +172,24 @@ public class Mechanum extends LinearOpMode {
             }
 
             // Flywheel control with PID
+            // Flywheel control with PID
+            // Flywheel control with PID
+            // Flywheel control with PID
+            // Flywheel control with PID
             if (flywheelRequested) {
-                // Use distance from Limelight to set target RPM
-                double distance = turret.getLastKnownDistance();
-                if (distance > 0) {
-                    flywheel.setTargetFromDistance(distance);
+                if (autoAim) {
+                    // Auto-aim enabled: use distance-based lookup table
+                    double distance = turret.getLastKnownDistance();
+                    if (distance > 0) {
+                        flywheel.setTargetFromDistance(distance);
+                    }
+                } else {
+                    // Auto-aim disabled: use fixed 1500 RPM
+                    flywheel.setTargetRPM(1500.0);
                 }
                 flywheel.setEnabled(true);
             } else {
                 flywheel.setEnabled(false);
-            }
-            if (flywheel.isAtTargetSpeed()){
-                gamepad1.rumble(10);
             }
 
             // Handle power interrupt for flipper
