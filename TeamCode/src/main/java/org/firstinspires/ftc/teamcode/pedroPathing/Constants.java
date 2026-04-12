@@ -21,10 +21,10 @@ public class Constants {
             .forwardZeroPowerAcceleration(-44) //TODO test forwardzeropoweraccelerationtuner -45, -43 -
             .lateralZeroPowerAcceleration(-72) //TODO test lateralzeropoweraccelerationtuner -73
             .translationalPIDFCoefficients(new PIDFCoefficients(0.08, 0, 0.01, 0)) //TODO test panels translation
-            .headingPIDFCoefficients(new PIDFCoefficients(1.2, 0, 0.01, 0)) //TODO test panels heading
-            .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.003,0.0,0.005,0.6,0.0)) //TODO test panels drive
+            .headingPIDFCoefficients(new PIDFCoefficients(0.6, 0, 0.01, 0)) //TODO test panels heading
+            .drivePIDFCoefficients(new FilteredPIDFCoefficients(0.003, 0.0, 0.0005, 0.6, 0.0)) //TODO test panels drive
             .centripetalScaling(0.005); //TODO test panels centripetal
-    public static PathConstraints pathConstraints = new PathConstraints(0.99, 100, 1, 1);
+    public static PathConstraints pathConstraints = new PathConstraints(0.8, 20, Math.toRadians(180), Math.toRadians(360));
 
     public static MecanumConstants driveConstants = new MecanumConstants()
             .maxPower(1)
