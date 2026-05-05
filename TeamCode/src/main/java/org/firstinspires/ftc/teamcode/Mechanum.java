@@ -1,13 +1,14 @@
 package org.firstinspires.ftc.teamcode;
 
 import com.bylazar.configurables.annotations.Configurable;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.Servo;
 
-@Configurable
+//@Configurable
 @TeleOp(name = "Mechanum Drive with Auto-Aiming Turret", group = "Mechanum")
 public class Mechanum extends LinearOpMode {
 
@@ -19,9 +20,9 @@ public class Mechanum extends LinearOpMode {
     public static double FLIPPER_LAUNCH_POSITION = 0.5;
     public static double FLYWHEEL_INTERRUPT_DURATION = 0.5; // Seconds to cut flywheel power during launch
 
-    public static boolean Y_REVERSED = false;
-    public static boolean X_REVERSED = true;
-    public static boolean RX_REVERSED = true;
+    public static boolean Y_REVERSED = true;
+    public static boolean X_REVERSED = false;
+    public static boolean RX_REVERSED = false;
 
     @Override
     public void runOpMode() {
@@ -65,7 +66,7 @@ public class Mechanum extends LinearOpMode {
         // Set motor directions - this is a common configuration
         // You may need to reverse directions based on your robot's build
         leftFrontDrive.setDirection(DcMotor.Direction.REVERSE);
-        leftBackDrive.setDirection(DcMotor.Direction.REVERSE);
+        leftBackDrive.setDirection(DcMotor.Direction.FORWARD);
         rightFrontDrive.setDirection(DcMotor.Direction.FORWARD);
         rightBackDrive.setDirection(DcMotor.Direction.FORWARD);
 
@@ -93,7 +94,8 @@ public class Mechanum extends LinearOpMode {
         while (opModeIsActive()) {
             //flipper.setPosition(FLIPPER_IDLE_POSITION);
 
-            redMode = !modeSwitch.getState();
+            //redMode = !modeSwitch.getState();
+            redMode = true;
             // --- Auto-Aim Toggle ---
             boolean isTrianglePressed = gamepad2.triangle || gamepad1.triangle;
             if (isTrianglePressed && !lastTrianglePressed) {
