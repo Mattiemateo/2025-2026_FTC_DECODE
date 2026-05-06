@@ -8,42 +8,39 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.Servo;
 
-//@Configurable
+@Configurable
 @TeleOp(name = "Mechanum Drive with Auto-Aiming Turret", group = "Mechanum")
 public class Mechanum extends LinearOpMode {
 
-    // --- Constants ---
+    // --- Constants --- git pls push
     public static double MANUAL_TURRET_INCREMENT = 4.0; // degrees
     public static double HOOD_INCREMENT = 0.05;
     public static double SLOW_MODE_SCALE = 0.25;
-    public static double FLIPPER_IDLE_POSITION = 0.15;
-    public static double FLIPPER_LAUNCH_POSITION = 0.5;
-    public static double FLYWHEEL_INTERRUPT_DURATION = 0.5; // Seconds to cut flywheel power during launch
+    public static double FLIPPER_IDLE_POSITION = 0.7;
+    public static double FLIPPER_LAUNCH_POSITION = 0.1;
+    public static double FLYWHEEL_INTERRUPT_DURATION = 0.6; // Seconds to cut flywheel power during launch
 
-    public static boolean Y_REVERSED = true;
-    public static boolean X_REVERSED = false;
-    public static boolean RX_REVERSED = false;
+    public static double blocker_closed = 0.3;
+
+    public static double blocker_open = 0.6;
+    public static boolean Y_REVERSED = false;
+    public static boolean X_REVERSED = true;
+    public static boolean RX_REVERSED = true;
 
     @Override
     public void runOpMode() {
         // --- Hardware Initialization ---
-        DcMotor leftFrontDrive = hardwareMap.get(
-            DcMotor.class,
-            "leftFrontDrive"
-        );
-        DcMotor rightFrontDrive = hardwareMap.get(
-            DcMotor.class,
-            "rightFrontDrive"
-        );
-        DcMotor leftBackDrive = hardwareMap.get(DcMotor.class, "leftBackDrive");
-        DcMotor rightBackDrive = hardwareMap.get(
-            DcMotor.class,
-            "rightBackDrive"
-        );
+        DcMotor leftFrontDrive = hardwareMap.get(DcMotor.class, "leftFrontDrive"); // port 2 Control hub
+        DcMotor rightFrontDrive = hardwareMap.get(DcMotor.class, "rightFrontDrive"); // port 2 Expansion hub
+        DcMotor leftBackDrive = hardwareMap.get(DcMotor.class, "leftBackDrive"); // port 3 Control hub
+        DcMotor rightBackDrive = hardwareMap.get(DcMotor.class, "rightBackDrive"); // port 3 Expansion hub
 
-        DcMotor intake = hardwareMap.get(DcMotor.class, "intake"); // port 2
-        Servo hood = hardwareMap.get(Servo.class, "hood"); // port 0
-        Servo flipper = hardwareMap.get(Servo.class, "flipper"); //port 5
+        DcMotor intake = hardwareMap.get(DcMotor.class, "intake"); // port 0 Control hub
+
+        Servo flipper = hardwareMap.get(Servo.class, "flipper"); //port 0 Control hub
+        Servo blocker = hardwareMap.get(Servo.class, "blocker"); //port 1 Control hub
+        Servo hood = hardwareMap.get(Servo.class, "hood"); // port 0 Expansion hub
+
         DigitalChannel modeSwitch = hardwareMap.get(DigitalChannel.class, "mode");
 
         // --- Controller Initialization ---
@@ -65,17 +62,17 @@ public class Mechanum extends LinearOpMode {
 
         // Set motor directions - this is a common configuration
         // You may need to reverse directions based on your robot's build
-        leftFrontDrive.setDirection(DcMotor.Direction.REVERSE);
-        leftBackDrive.setDirection(DcMotor.Direction.FORWARD);
-        rightFrontDrive.setDirection(DcMotor.Direction.FORWARD);
-        rightBackDrive.setDirection(DcMotor.Direction.FORWARD);
+        leftFrontDrive.setDirection(DcMotor.Direction.FORWARD);
+        leftBackDrive.setDirection(DcMotor.Direction.REVERSE);
+        rightFrontDrive.setDirection(DcMotor.Direction.REVERSE);
+        rightBackDrive.setDirection(DcMotor.Direction.REVERSE);
 
         intake.setDirection(DcMotor.Direction.FORWARD);
 
         // --- State Variables ---
         boolean autoAim = false;
         boolean lastTrianglePressed = false;
-        double hoodPosition = 0.6;
+        double hoodPosition = 0.6;;
         boolean intakeOn = false;
         boolean lastCirclePressed = false;
         boolean lastFlipperPressed = false;
@@ -90,10 +87,10 @@ public class Mechanum extends LinearOpMode {
         waitForStart();
 
         flipper.setPosition(FLIPPER_IDLE_POSITION);
+        blocker.setPosition(blocker_closed);
 
         while (opModeIsActive()) {
             //flipper.setPosition(FLIPPER_IDLE_POSITION);
-
             //redMode = !modeSwitch.getState();
             redMode = true;
             // --- Auto-Aim Toggle ---
@@ -150,12 +147,13 @@ public class Mechanum extends LinearOpMode {
             // --- Subsystems ---
             boolean invertIntake =
                 gamepad1.right_bumper || gamepad2.right_bumper;
-            intake.setPower(intakeOn ? invertIntake ? -1 : 1 : 0);
+            intake.setPower(intakeOn ? invertIntake ? -0.7 : 0.7 : 0);
 
             // Flipper and Flywheel control with power interrupt
-            boolean flipperPressed = gamepad1.right_trigger > 0 || gamepad2.right_trigger > 0;
+            boolean flipperPressed = (gamepad1.right_trigger > 0 || gamepad2.right_trigger > 0) && intakeOn;
             boolean flywheelRequested =
-                gamepad2.left_bumper || gamepad1.left_bumper;
+                    gamepad2.left_bumper || gamepad1.left_bumper;
+            // Detect flipper trigger press (rising edge)
 
             // Detect flipper trigger press (rising edge)
             if (flipperPressed && !lastFlipperPressed) {
@@ -174,10 +172,6 @@ public class Mechanum extends LinearOpMode {
             }
 
             // Flywheel control with PID
-            // Flywheel control with PID
-            // Flywheel control with PID
-            // Flywheel control with PID
-            // Flywheel control with PID
             if (flywheelRequested) {
                 if (autoAim) {
                     // Auto-aim enabled: use distance-based lookup table
@@ -187,7 +181,7 @@ public class Mechanum extends LinearOpMode {
                     }
                 } else {
                     // Auto-aim disabled: use fixed 1500 RPM
-                    flywheel.setTargetRPM(1500.0);
+                    flywheel.setTargetRPM(1100.0);
                 }
                 flywheel.setEnabled(true);
             } else {
@@ -203,10 +197,13 @@ public class Mechanum extends LinearOpMode {
 
             // Set flipper position
             if (flipperPressed) {
+                blocker.setPosition(blocker_open);
                 flipper.setPosition(FLIPPER_LAUNCH_POSITION);
             } else {
+                blocker.setPosition(blocker_closed);
                 flipper.setPosition(FLIPPER_IDLE_POSITION);
             }
+
 
             // Manual Turret Control
             if (!autoAim) {

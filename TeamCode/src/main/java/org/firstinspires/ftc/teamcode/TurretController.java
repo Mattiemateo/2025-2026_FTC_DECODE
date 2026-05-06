@@ -73,7 +73,7 @@ public class TurretController {
             imu.initialize(parameters);
             telemetry.addData("IMU", "Initialized successfully");
 
-            turretMotor = hardwareMap.get(DcMotorEx.class, "turret");
+            turretMotor = hardwareMap.get(DcMotorEx.class, "turret"); // port 0 Expansion hub
             turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             turretMotor.setPIDFCoefficients(
@@ -105,6 +105,7 @@ public class TurretController {
                 double robotYaw = getRobotHeading();
                 limelight.updateRobotOrientation(robotYaw);
             } catch (Exception e) {
+                // Silently continue if orientation update fails
                 telemetry.addData("Turret Init Error", e.getMessage());
                 telemetry.update();
                 throw new RuntimeException("Turret init failed: " + e.getMessage(), e);
