@@ -22,10 +22,10 @@ public class FlywheelController {
     // --- PID Coefficients ---
     // These will need tuning for the flywheel
     // F (feedforward) is probably most important for velocity control
-    public static double FLYWHEEL_P = 10.0;
+    public static double FLYWHEEL_P = 9.0;
     public static double FLYWHEEL_I = 0.5;
     public static double FLYWHEEL_D = 0.0;
-    public static double FLYWHEEL_F = 12.0; // Feedforward - main driver for velocity
+    public static double FLYWHEEL_F = 15.0; // Feedforward - main driver for velocity
 
     // --- Flywheel Settings ---
     public static double IDLE_RPM = 0.0; // RPM when flywheel is "off"

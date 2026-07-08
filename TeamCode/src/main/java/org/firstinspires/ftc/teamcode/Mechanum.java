@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
 @Configurable
 @TeleOp(name = "Mechanum Drive with Auto-Aiming Turret", group = "Mechanum")
@@ -16,8 +17,8 @@ public class Mechanum extends LinearOpMode {
     public static double MANUAL_TURRET_INCREMENT = 4.0; // degrees
     public static double HOOD_INCREMENT = 0.05;
     public static double SLOW_MODE_SCALE = 0.25;
-    public static double FLIPPER_IDLE_POSITION = 0.7;
-    public static double FLIPPER_LAUNCH_POSITION = 0.1;
+    public static double FLIPPER_IDLE_POSITION = 0.8;
+    public static double FLIPPER_LAUNCH_POSITION = 0.25;
     public static double FLYWHEEL_INTERRUPT_DURATION = 0.6; // Seconds to cut flywheel power during launch
 
     public static double blocker_closed = 0.3;
@@ -26,6 +27,50 @@ public class Mechanum extends LinearOpMode {
     public static boolean Y_REVERSED = false;
     public static boolean X_REVERSED = true;
     public static boolean RX_REVERSED = true;
+
+    // Add these state variables alongside your existing ones (inside runOpMode, before the loop)
+    int shootState = 0;
+
+    boolean intakeOn = false;
+    ElapsedTime shootTimer = new com.qualcomm.robotcore.util.ElapsedTime();
+    boolean lastShootPressed = false;
+
+    // Delays (tweak these)
+    public static double SHOOT_INTAKE_DELAY = 0.4;   // time before flipper fires
+    public static double SHOOT_FLIPPER_DELAY = 0.3;  // time flipper stays up
+
+    // Call this every loop iteration, pass in the relevant servos/motors
+    private void updateShoot(DcMotor intake, Servo flipper, Servo blocker) {
+        switch (shootState) {
+            case 0: // idle - nothing happening
+                break;
+
+            case 1: // start: intake on, blocker open
+                intakeOn = true;
+                blocker.setPosition(blocker_open);
+                flipper.setPosition(FLIPPER_IDLE_POSITION);
+                shootTimer.reset();
+                shootState = 2;
+                break;
+
+            case 2: // wait before flipping
+                if (shootTimer.seconds() >= SHOOT_INTAKE_DELAY) {
+                    flipper.setPosition(FLIPPER_LAUNCH_POSITION);
+                    shootTimer.reset();
+                    shootState = 3;
+                }
+                break;
+
+            case 3: // wait for flipper to finish, then clean up
+                if (shootTimer.seconds() >= SHOOT_FLIPPER_DELAY) {
+                    flipper.setPosition(FLIPPER_IDLE_POSITION);
+                    blocker.setPosition(blocker_closed);
+                    intakeOn = false;
+                    shootState = 0;
+                }
+                break;
+        }
+    }
 
     @Override
     public void runOpMode() {
@@ -218,6 +263,16 @@ public class Mechanum extends LinearOpMode {
                 }
             }
 
+            // Trigger shoot sequence on button press (e.g. cross/X button)
+            boolean isShootPressed = gamepad1.cross || gamepad2.cross;
+            if (isShootPressed && !lastShootPressed && shootState == 0) {
+                shootState = 1; // kick off the sequence
+            }
+            lastShootPressed = isShootPressed;
+
+            // Run the state machine every tick
+            updateShoot(intake, flipper, blocker);
+
             // Hood Control
             if (gamepad2.dpad_up || gamepad1.dpad_up) {
                 hoodPosition -= HOOD_INCREMENT;
@@ -238,6 +293,7 @@ public class Mechanum extends LinearOpMode {
             } else {
                 turret.setPipeline(7);
             }
+
 
             // --- Telemetry ---
             telemetry.addData("Hood Position", "%.2f", hoodPosition);
