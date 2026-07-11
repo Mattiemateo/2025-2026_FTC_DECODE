@@ -13,9 +13,18 @@ public class autoball extends LinearOpMode {
     private Limelight3A limelight;
 
     private static final int    PIPELINE_INDEX = 1;   // matches your redMode pipeline, adjust as needed
-    private static final double TARGET_TA      = 9.0; // tune: read ta at your desired stop distance
+
+    // --- TUNE THIS ---
+    // Point the robot exactly where you want it to stop relative to the ball,
+    // read the "ta" telemetry value at that exact spot, and put it here.
+    // If the robot is stopping too far away, this number is too LOW - raise it.
+    private static final double TARGET_TA      = 9.0;
     private static final double TA_TOLERANCE   = 0.3;
     private static final double TX_TOLERANCE   = 1.0; // degrees
+
+    // Require this many consecutive in-tolerance frames before declaring "arrived".
+    // Prevents a single noisy/jittery frame from triggering an early stop.
+    private static final int    ARRIVAL_CONFIRM_FRAMES = 5;
 
     private static final double MAX_DRIVE = 0.8;
     private static final double MAX_TURN  = 0.5;
@@ -30,6 +39,8 @@ public class autoball extends LinearOpMode {
     private static final double TURN_SIGN  = -1.0;
 
     private static final long LOST_TARGET_TIMEOUT_MS = 500;
+
+    private static final double SEARCH_TURN_POWER = 0.25;
 
     @Override
     public void runOpMode() {
@@ -63,10 +74,52 @@ public class autoball extends LinearOpMode {
         waitForStart();
         if (isStopRequested()) return;
 
-        long lastSeenTime = System.currentTimeMillis();
-        boolean arrived = false;
+        // Main loop: keep searching for a ball, approach + intake it, then search again.
+        while (opModeIsActive()) {
+            boolean found = search();
+            if (!found) break; // opmode stopped mid-search
 
-        while (opModeIsActive() && !arrived) {
+            approachAndIntake();
+            // Loop back to search() regardless of whether approach succeeded or the
+            // target was lost - search() will just re-find the next ball.
+        }
+
+        stopDrive();
+        sleep(500);
+    }
+
+    /**
+     * Rotate in place, scanning, until the Limelight reports a valid target.
+     * Returns false only if the opmode was stopped while searching.
+     */
+    private boolean search() {
+        telemetry.addLine("Searching...");
+        telemetry.update();
+
+        while (opModeIsActive()) {
+            LLResult result = limelight.getLatestResult();
+
+            if (result != null && result.isValid()) {
+                stopDrive();
+                return true;
+            }
+
+            setDrivePowers(0, 0, TURN_SIGN * SEARCH_TURN_POWER);
+        }
+        return false;
+    }
+
+    /**
+     * Drive toward the currently tracked target and intake it once arrived.
+     * Requires ARRIVAL_CONFIRM_FRAMES consecutive in-tolerance frames before
+     * stopping, to avoid stopping early on a single noisy reading.
+     * Returns to caller (search loop) if the target is lost or once intake completes.
+     */
+    private void approachAndIntake() {
+        long lastSeenTime = System.currentTimeMillis();
+        int consecutiveArrived = 0;
+
+        while (opModeIsActive()) {
             LLResult result = limelight.getLatestResult();
 
             if (result != null && result.isValid()) {
@@ -76,11 +129,18 @@ public class autoball extends LinearOpMode {
                 double ta = result.getTa();
                 double taError = TARGET_TA - ta; // + = too far, need forward power
 
-                if (Math.abs(taError) < TA_TOLERANCE && Math.abs(tx) < TX_TOLERANCE) {
-                    arrived = true;
-                    intake();
+                boolean inTolerance = Math.abs(taError) < TA_TOLERANCE && Math.abs(tx) < TX_TOLERANCE;
+
+                if (inTolerance) {
+                    consecutiveArrived++;
+                } else {
+                    consecutiveArrived = 0;
+                }
+
+                if (consecutiveArrived >= ARRIVAL_CONFIRM_FRAMES) {
                     stopDrive();
-                    break;
+                    intake();
+                    return;
                 }
 
                 double y = DRIVE_SIGN * clamp(KP_DRIVE * taError, -MAX_DRIVE, MAX_DRIVE);
@@ -91,38 +151,38 @@ public class autoball extends LinearOpMode {
                 y *= slowFactor;
 
                 double rx = TURN_SIGN * clamp(KP_TURN * tx, -MAX_TURN, MAX_TURN);
-                double x = 0; // no strafing needed, driving straight at target
 
-                double denominator = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1);
-                leftFrontDrive.setPower((y + x + rx) / denominator);
-                leftBackDrive.setPower((y - x + rx) / denominator);
-                rightFrontDrive.setPower((y - x - rx) / denominator);
-                rightBackDrive.setPower((y + x - rx) / denominator);
+                setDrivePowers(y, 0, rx);
 
                 telemetry.addData("tx", tx);
                 telemetry.addData("ta", ta);
                 telemetry.addData("taError", taError);
+                telemetry.addData("consecutiveArrived", consecutiveArrived);
                 telemetry.update();
 
             } else {
                 if (System.currentTimeMillis() - lastSeenTime > LOST_TARGET_TIMEOUT_MS) {
                     stopDrive();
-                    telemetry.addLine("Target lost - stopped.");
+                    telemetry.addLine("Target lost - returning to search.");
                     telemetry.update();
+                    return; // go back to search()
                 }
             }
         }
+    }
 
-        stopDrive();
-        sleep(500);
+    private void setDrivePowers(double y, double x, double rx) {
+        double denominator = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1);
+        leftFrontDrive.setPower((y + x + rx) / denominator);
+        leftBackDrive.setPower((y - x + rx) / denominator);
+        rightFrontDrive.setPower((y - x - rx) / denominator);
+        rightBackDrive.setPower((y + x - rx) / denominator);
     }
 
     private void stopDrive() {
-        leftFrontDrive.setPower(0);
-        rightFrontDrive.setPower(0);
-        leftBackDrive.setPower(0);
-        rightBackDrive.setPower(0);
+        setDrivePowers(0, 0, 0);
     }
+
     private void intake() {
         intake.setPower(-0.7);
         sleep(2000);
