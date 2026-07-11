@@ -15,10 +15,16 @@ public class autoball extends LinearOpMode {
     private static final int    PIPELINE_INDEX = 1;   // matches your redMode pipeline, adjust as needed
 
     // --- TUNE THIS ---
-    // Point the robot exactly where you want it to stop relative to the ball,
-    // read the "ta" telemetry value at that exact spot, and put it here.
-    // If the robot is stopping too far away, this number is too LOW - raise it.
-    private static final double TARGET_TA      = 9.0;
+    // ta = how much of the camera frame the ball fills. It gets BIGGER the CLOSER
+    // the robot gets. The robot drives forward until ta reaches TARGET_TA.
+    // If the robot is stopping too far away (not driving far enough forward),
+    // TARGET_TA is too LOW - raise it. If it's driving too far / bumping the ball,
+    // TARGET_TA is too HIGH - lower it.
+    //
+    // How to find the right number: run the opmode, manually note the "ta" telemetry
+    // value while slowly walking/pushing the robot toward the ball by hand, and read
+    // off what ta is at the exact spot you want it to stop. Put that value here.
+    private static final double TARGET_TA      = 20.0;
     private static final double TA_TOLERANCE   = 0.3;
     private static final double TX_TOLERANCE   = 1.0; // degrees
 
@@ -41,6 +47,14 @@ public class autoball extends LinearOpMode {
     private static final long LOST_TARGET_TIMEOUT_MS = 500;
 
     private static final double SEARCH_TURN_POWER = 0.25;
+
+    // If the Limelight loses the target after it was already this close (ta this high),
+    // assume it just went out of frame under the camera - not a real loss. In that case,
+    // drive forward blind for BLIND_DRIVE_MS to close the last gap, then intake.
+    // If it's lost before ever getting this close, treat it as a genuine loss and re-search.
+    private static final double MIN_TA_FOR_BLIND_APPROACH = 6.0;
+    private static final long   BLIND_DRIVE_MS            = 400; // tune: how far to creep forward blind
+    private static final double BLIND_DRIVE_POWER         = 0.3;
 
     @Override
     public void runOpMode() {
@@ -118,6 +132,7 @@ public class autoball extends LinearOpMode {
     private void approachAndIntake() {
         long lastSeenTime = System.currentTimeMillis();
         int consecutiveArrived = 0;
+        double lastKnownTa = 0;
 
         while (opModeIsActive()) {
             LLResult result = limelight.getLatestResult();
@@ -127,15 +142,13 @@ public class autoball extends LinearOpMode {
 
                 double tx = result.getTx();
                 double ta = result.getTa();
+                lastKnownTa = ta;
                 double taError = TARGET_TA - ta; // + = too far, need forward power
 
+                // Fallback: if the ball is big enough that it never leaves frame,
+                // this still catches "arrived" the old way.
                 boolean inTolerance = Math.abs(taError) < TA_TOLERANCE && Math.abs(tx) < TX_TOLERANCE;
-
-                if (inTolerance) {
-                    consecutiveArrived++;
-                } else {
-                    consecutiveArrived = 0;
-                }
+                consecutiveArrived = inTolerance ? consecutiveArrived + 1 : 0;
 
                 if (consecutiveArrived >= ARRIVAL_CONFIRM_FRAMES) {
                     stopDrive();
@@ -157,10 +170,21 @@ public class autoball extends LinearOpMode {
                 telemetry.addData("tx", tx);
                 telemetry.addData("ta", ta);
                 telemetry.addData("taError", taError);
-                telemetry.addData("consecutiveArrived", consecutiveArrived);
                 telemetry.update();
 
             } else {
+                // Target not visible this frame.
+                if (lastKnownTa >= MIN_TA_FOR_BLIND_APPROACH) {
+                    // It was already close - it almost certainly just went under the
+                    // camera. Creep forward blind for a fixed burst, then intake.
+                    telemetry.addLine("Target lost while close - blind creep + intake.");
+                    telemetry.update();
+                    blindCreepForward();
+                    stopDrive();
+                    intake();
+                    return;
+                }
+
                 if (System.currentTimeMillis() - lastSeenTime > LOST_TARGET_TIMEOUT_MS) {
                     stopDrive();
                     telemetry.addLine("Target lost - returning to search.");
@@ -168,6 +192,14 @@ public class autoball extends LinearOpMode {
                     return; // go back to search()
                 }
             }
+        }
+    }
+
+    /** Drive straight forward blind for BLIND_DRIVE_MS to close the final gap once the target is out of frame. */
+    private void blindCreepForward() {
+        long start = System.currentTimeMillis();
+        while (opModeIsActive() && System.currentTimeMillis() - start < BLIND_DRIVE_MS) {
+            setDrivePowers(DRIVE_SIGN * BLIND_DRIVE_POWER, 0, 0);
         }
     }
 
