@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode;
+package org.firstinspires.ftc.teamcode.pedroPathing;
 
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
@@ -9,11 +9,11 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 @Autonomous(name = "autoball", group = "Vision")
 public class autoball extends LinearOpMode {
 
-    private DcMotor leftFrontDrive, rightFrontDrive, leftBackDrive, rightBackDrive;
+    private DcMotor leftFrontDrive, rightFrontDrive, leftBackDrive, rightBackDrive, intake;
     private Limelight3A limelight;
 
     private static final int    PIPELINE_INDEX = 1;   // matches your redMode pipeline, adjust as needed
-    private static final double TARGET_TA      = 7.0; // tune: read ta at your desired stop distance
+    private static final double TARGET_TA      = 9.0; // tune: read ta at your desired stop distance
     private static final double TA_TOLERANCE   = 0.3;
     private static final double TX_TOLERANCE   = 1.0; // degrees
 
@@ -38,10 +38,15 @@ public class autoball extends LinearOpMode {
         leftBackDrive   = hardwareMap.get(DcMotor.class, "leftBackDrive");
         rightBackDrive  = hardwareMap.get(DcMotor.class, "rightBackDrive");
 
+        intake = hardwareMap.get(DcMotor.class, "intake"); // port 0 Control hub
+
         leftFrontDrive.setDirection(DcMotor.Direction.FORWARD);
         leftBackDrive.setDirection(DcMotor.Direction.REVERSE);
         rightFrontDrive.setDirection(DcMotor.Direction.REVERSE);
         rightBackDrive.setDirection(DcMotor.Direction.REVERSE);
+
+        intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        intake.setDirection(DcMotor.Direction.FORWARD);
 
         for (DcMotor m : new DcMotor[]{leftFrontDrive, rightFrontDrive, leftBackDrive, rightBackDrive}) {
             m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
@@ -73,6 +78,7 @@ public class autoball extends LinearOpMode {
 
                 if (Math.abs(taError) < TA_TOLERANCE && Math.abs(tx) < TX_TOLERANCE) {
                     arrived = true;
+                    intake();
                     stopDrive();
                     break;
                 }
@@ -116,6 +122,11 @@ public class autoball extends LinearOpMode {
         rightFrontDrive.setPower(0);
         leftBackDrive.setPower(0);
         rightBackDrive.setPower(0);
+    }
+    private void intake() {
+        intake.setPower(-0.7);
+        sleep(2000);
+        intake.setPower(0);
     }
 
     private double clamp(double v, double lo, double hi) {
