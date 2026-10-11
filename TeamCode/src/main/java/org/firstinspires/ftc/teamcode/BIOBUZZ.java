@@ -40,7 +40,7 @@ public class BIOBUZZ extends LinearOpMode {
         rightFrontDrive.setDirection(DcMotor.Direction.REVERSE);
         rightBackDrive.setDirection(DcMotor.Direction.REVERSE);
 
-        intake.setDirection(DcMotor.Direction.FORWARD);
+        intake.setDirection(DcMotor.Direction.REVERSE);
 
         // --- State Variables ---
         boolean intakeOn = false;

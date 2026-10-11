@@ -71,7 +71,7 @@ public class autoball extends LinearOpMode {
         rightBackDrive.setDirection(DcMotor.Direction.REVERSE);
 
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        intake.setDirection(DcMotor.Direction.FORWARD);
+        intake.setDirection(DcMotor.Direction.REVERSE);
 
         for (DcMotor m : new DcMotor[]{leftFrontDrive, rightFrontDrive, leftBackDrive, rightBackDrive}) {
             m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
