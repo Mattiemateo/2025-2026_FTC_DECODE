@@ -1,103 +1,93 @@
 package org.firstinspires.ftc.teamcode;
 
-import com.bylazar.configurables.annotations.Configurable;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.util.ElapsedTime;
+import org.firstinspires.ftc.teamcode.pedro.Constants;
 
-@Configurable
-@TeleOp(name = "BIOBUZZ", group = "Mechanum")
+@TeleOp(name = "BIOBUZZ", group = "BIOBUZZ")
 public class BIOBUZZ extends LinearOpMode {
-
-    // --- Constants ---
-    public static double SLOW_MODE_SCALE = 0.25;
-    public static boolean Y_REVERSED = false;
-    public static boolean X_REVERSED = true;
-    public static boolean RX_REVERSED = true;
-
     @Override
     public void runOpMode() {
-        // --- Hardware Initialization ---
-        DcMotor leftFrontDrive = hardwareMap.get(DcMotor.class, "leftFrontDrive"); // port 2 Control hub
-        DcMotor rightFrontDrive = hardwareMap.get(DcMotor.class, "rightFrontDrive"); // port 2 Expansion hub
-        DcMotor leftBackDrive = hardwareMap.get(DcMotor.class, "leftBackDrive"); // port 3 Control hub
-        DcMotor rightBackDrive = hardwareMap.get(DcMotor.class, "rightBackDrive"); // port 3 Expansion hub
+        DcMotor frontLeft = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.frontLeftName.get());
+        DcMotor frontRight = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.frontRightName.get());
+        DcMotor backLeft = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.backLeftName.get());
+        DcMotor backRight = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.backRightName.get());
+        DcMotor intake = hardwareMap.get(DcMotor.class, "intake");
+        DcMotor transfer = hardwareMap.get(DcMotor.class, "transfer");
+        DcMotor flywheel = hardwareMap.get(DcMotor.class, "flywheel");
+        DcMotor[] motors = {frontLeft, frontRight, backLeft, backRight, intake, transfer, flywheel};
+        TurretController turret = new TurretController();
 
-        DcMotor intake = hardwareMap.get(DcMotor.class, "intake"); // port 0 Control hub
-
-        // --- Motor Configuration ---
-        leftFrontDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        rightFrontDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        leftBackDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        rightBackDrive.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-
-        intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-
-        // Set motor directions - this is a common configuration
-        // You may need to reverse directions based on your robot's build
-        leftFrontDrive.setDirection(DcMotor.Direction.FORWARD);
-        leftBackDrive.setDirection(DcMotor.Direction.REVERSE);
-        rightFrontDrive.setDirection(DcMotor.Direction.REVERSE);
-        rightBackDrive.setDirection(DcMotor.Direction.REVERSE);
-
-        intake.setDirection(DcMotor.Direction.REVERSE);
-
-        // --- State Variables ---
-        boolean intakeOn = false;
-        boolean lastAPressed = false;
-
-        telemetry.addData("Status", "Initialized");
-        telemetry.update();
-
-        waitForStart();
-
-        while (opModeIsActive()) {
-            // --- Intake Toggle (gamepad1.a) ---
-            boolean isAPressed = gamepad1.a;
-            if (isAPressed && !lastAPressed) {
-                intakeOn = !intakeOn;
+        try {
+            for (DcMotor motor : motors) {
+                motor.setPower(0);
+                motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+                motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+                motor.setDirection(DcMotor.Direction.FORWARD);
             }
-            lastAPressed = isAPressed;
+            frontLeft.setDirection(Constants.drivetrainConfig.frontLeftDirection.get());
+            frontRight.setDirection(Constants.drivetrainConfig.frontRightDirection.get());
+            backLeft.setDirection(Constants.drivetrainConfig.backLeftDirection.get());
+            backRight.setDirection(Constants.drivetrainConfig.backRightDirection.get());
+            intake.setDirection(DcMotor.Direction.REVERSE);
+            flywheel.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+            turret.init(hardwareMap, telemetry);
 
-            // --- Drivetrain ---
-            // Standard Mecanum drive logic
-            double y = Y_REVERSED
-                    ? -gamepad1.left_stick_y
-                    : gamepad1.left_stick_y;
-            double x = X_REVERSED
-                    ? -gamepad1.left_stick_x
-                    : gamepad1.left_stick_x;
-            double rx = RX_REVERSED
-                    ? -gamepad1.right_stick_x
-                    : gamepad1.right_stick_x;
-
-            // Denominator is the largest motor power (absolute value) or 1
-            // This ensures all the powers maintain the same ratio, but only when
-            // at least one is out of the range [-1, 1]
-            double denominator = Math.max(
-                    Math.abs(y) + Math.abs(x) + Math.abs(rx),
-                    1
-            );
-            double leftFrontPower = (y + x + rx) / denominator;
-            double leftBackPower = (y - x + rx) / denominator;
-            double rightFrontPower = (y - x - rx) / denominator;
-            double rightBackPower = (y + x - rx) / denominator;
-
-            // Slow mode
-            double scale = gamepad1.left_trigger > 0.5 ? SLOW_MODE_SCALE : 1.0;
-
-            leftFrontDrive.setPower(leftFrontPower * scale);
-            leftBackDrive.setPower(leftBackPower * scale);
-            rightFrontDrive.setPower(rightFrontPower * scale);
-            rightBackDrive.setPower(rightBackPower * scale);
-
-            // --- Intake ---
-            boolean invertIntake = gamepad1.right_bumper;
-            intake.setPower(intakeOn ? (invertIntake ? 0.7 : -0.7) : 0);
-
-            // --- Telemetry ---
-            telemetry.addData("Intake", intakeOn ? "ON" : "OFF");
+            telemetry.addLine("Center turret BEFORE INIT; encoder zero is the starting position.");
+            telemetry.addLine("Sticks: drive | LB: slow | triggers: intake | A/B: transfer forward/reverse");
+            telemetry.addLine("D-pad left/right: turret | X: flywheel | RB: auto aim (hold) | Y: stop all");
             telemetry.update();
+            waitForStart();
+            ElapsedTime loopTime = new ElapsedTime();
+
+            while (opModeIsActive()) {
+                double dt = Math.min(loopTime.seconds(), 0.1);
+                loopTime.reset();
+                if (gamepad1.y) {
+                    for (DcMotor motor : motors) motor.setPower(0);
+                    turret.enableAutoAim(false);
+                    turret.stop();
+                    break;
+                }
+
+                double scale = gamepad1.left_bumper ? 0.25 : 0.6;
+                double[] powers = drivePowers(-gamepad1.left_stick_y,
+                        gamepad1.left_stick_x, gamepad1.right_stick_x, scale);
+                frontLeft.setPower(powers[0]);
+                frontRight.setPower(powers[1]);
+                backLeft.setPower(powers[2]);
+                backRight.setPower(powers[3]);
+                intake.setPower(0.6 * (gamepad1.right_trigger - gamepad1.left_trigger));
+                transfer.setPower(gamepad1.a == gamepad1.b ? 0 : gamepad1.a ? 0.5 : -0.5);
+                // shortcut: open-loop flywheel power, tune encoder velocity after choosing its gearbox.
+                flywheel.setPower(gamepad1.x ? 0.5 : 0);
+
+                turret.enableAutoAim(gamepad1.right_bumper);
+                if (!gamepad1.right_bumper) {
+                    double movement = (gamepad1.dpad_right ? 1 : 0) - (gamepad1.dpad_left ? 1 : 0);
+                    turret.setManualTargetAngle(turret.getManualTargetAngle() + movement * 45 * dt);
+                }
+                turret.update();
+                telemetry.addData("Flywheel power", flywheel.getPower());
+                telemetry.addData("Transfer power", transfer.getPower());
+                telemetry.update();
+                idle();
+            }
+        } finally {
+            for (DcMotor motor : motors) motor.setPower(0);
+            turret.stop();
         }
+    }
+
+    static double[] drivePowers(double forward, double strafe, double turn, double scale) {
+        double denominator = Math.max(1, Math.abs(forward) + Math.abs(strafe) + Math.abs(turn));
+        return new double[] {
+                (forward + strafe + turn) / denominator * scale,
+                (forward - strafe - turn) / denominator * scale,
+                (forward - strafe + turn) / denominator * scale,
+                (forward + strafe - turn) / denominator * scale
+        };
     }
 }

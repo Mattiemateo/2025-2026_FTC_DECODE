@@ -1,12 +1,75 @@
-x## NOTICE
+# BIOBUZZ robot project
 
-This repository contains the public FTC SDK for the DECODE (2025-2026) competition season.
+Open this directory in Android Studio and deploy the **TeamCode** configuration. No new empty Android Studio project is needed. The BIOBUZZ setup lives on `biobuzz-season`; the complete previous project, including your pending changes, is preserved on `archive/decode-before-biobuzz` at `fb94e63`. Old team sources are also in `archive/2025-2026/teamcode`, outside the Android source set.
+
+Dependencies: FTC SDK **12.0.0**, Pedro Pathing **3.0.1**, AutoTune **1.0.1**, and Marrow **1.2.0**. Marrow is installed for future robot behaviors; this first manual TeleOp does not require a command framework. The previous explicit Sloth hot-reload plugin was removed; AutoTune brings its own compatible Sloth runtime. The existing Limelight pipeline **8**, turret encoder gearing, and IMU orientation (logo FORWARD, USB UP) are retained.
+
+## Hardware and first run
+
+Use two REV hubs for the eight REV HD Hex motors. In the Robot Configuration, choose the motor type that matches each actual gearbox; HD Hex alone does not specify output RPM or encoder ticks per output revolution.
+
+| Device | Configuration name |
+| --- | --- |
+| Front left / front right drive | `leftFrontDrive` / `rightFrontDrive` |
+| Back left / back right drive | `leftBackDrive` / `rightBackDrive` |
+| Intake / transfer | `intake` / `transfer` |
+| Turret / flywheel | `turret` / `flywheel` |
+| IMU / Limelight | `imu` / `limelight` |
+| Forward / strafe pod encoder ports (provisional) | `leftBackDrive` / `rightFrontDrive` |
+
+The pod names refer to the configured motor ports their encoder cables occupy. Two passive GoBilda pods need no Pinpoint. Confirm the encoder-port names and actual hub orientation in `teamcode/pedro/Constants.java` and the Two Wheel Tuner inputs.
+
+**Manually center the turret before pressing INIT.** There is no homing sensor; encoder zero means its position at INIT. Confirm the provisional -45° to +45° travel limits in `TurretController.java` before moving it. Software limits depend on correct centering and encoder wiring. Test wheel directions with the robot lifted, then verify mechanism directions at low power. Transfer and flywheel start with FORWARD direction; intake keeps your REVERSE setting. Drive directions match the previous BIOBUZZ TeleOp and are shared with Pedro's drivetrain config.
+
+## One-gamepad TeleOp: BIOBUZZ
+
+| Control | Action |
+| --- | --- |
+| Left stick / right stick X | Robot-relative translation / turn (60% maximum) |
+| Hold left bumper | 25% slow drive |
+| Right / left trigger | Intake forward / reverse (60% maximum) |
+| Hold A / B | Transfer forward / reverse (50%; both stops transfer) |
+| D-pad left / right | Adjust turret target (45°/second, limited travel) |
+| Hold X | Flywheel at 50% power; release to coast |
+| Hold right bumper | Existing Limelight auto aim and bounded target search |
+| Y | Stop all motors and end TeleOp |
+
+All motors stop in cleanup, including when initialization or the active loop fails. Flywheel power is intentionally open loop until the gearbox and shooting speed are measured. The previous flywheel controller and its RPM lookup table are preserved in the archive; their calibration is not assumed valid for this robot.
+
+## Pedro AutoTune
+
+Deploy TeamCode, connect your laptop to the robot's Wi-Fi, and open **http://192.168.43.1:10158** (use the robot's actual IP if different). AutoTune starts with the Robot Controller app; its procedures are registered in `teamcode/pedro/Tuning.java`.
+
+1. Run **Mecanum Tuner**, then paste the generated drivetrain configuration into `Constants.java`.
+2. Run **Two Wheel Tuner** with your two GoBilda pods and IMU; paste its generated localizer configuration into `Constants.java`.
+3. Run **Foresight Tuner**, then paste its generated configuration into `Constants.java`.
+4. Run **Tests** for localization and path following.
+
+The localizer measurements and Foresight coefficients remain unset until measured. Attempting to construct them before tuning produces Pedro's required-setting error, rather than silently using last season's calibration. TeleOp driving and turret aiming do not construct the Pedro localizer. AutoTune moves the robot during its procedures; follow its prompts and allow the requested travel space.
+
+[Pedro installation and tuning](https://pedropathing.com/docs/pathing/installation) · [Pedro 3.0.1 release](https://github.com/Pedro-Pathing/PedroPathing/releases/tag/v3.0.1) · [Marrow documentation](https://marrow.skeletonarmyftc.com/getting-started/quickstart) · [FTC SDK 12.0 release](https://github.com/FIRST-Tech-Challenge/FtcRobotController/releases/tag/v12.0)
+
+## Build and checks
+
+Use JDK 17 or newer (this setup was built with JDK 21), Android SDK 36, and Android Studio Narwhal 3 Feature Drop or newer. Install the matching FTC Driver Station 12.0 release before operating the updated Robot Controller.
+
+```sh
+./gradlew :TeamCode:assembleDebug :TeamCode:testDebugUnitTest :TeamCode:lintDebug
+```
+
+Validation: the debug APK builds, all three unit tests pass, and lint completes with zero reported errors. The unit tests cover mecanum output directions/power bounds and turret target limits. The SDK/AutoTune dependencies still emit native-library alignment and Kotlin metadata compatibility warnings with the official SDK build tools; hardware execution of AutoTune is not yet verified. The upstream tuning sources also produce locale warnings. Build tool versions remain those supplied by FTC SDK 12.0. On-robot checks, odometry/algorithm tuning, turret limits, and flywheel speed remain to be performed on the actual robot.
+
+---
+
+## NOTICE
+
+This repository contains the public FTC SDK for the BIOBUZZ (2026-2027) competition season.
 
 ## Welcome!
 This GitHub repository contains the source code that is used to build an Android app to control a *FIRST* Tech Challenge competition robot.  To use this SDK, download/clone the entire project to your local computer.
 
 ## Requirements
-To use this Android Studio project, you will need Android Studio Ladybug (2024.2) or later.
+To use this Android Studio project, you will need Android Studio Narwhal 3 Feature Drop or later.
 
 To program your robot in Blocks or OnBot Java, you do not need Android Studio.
 
@@ -59,6 +122,90 @@ The readme.md file located in the [/TeamCode/src/main/java/org/firstinspires/ftc
 
 # Release Information
 
+## Version 12.0 (20260907-090034)
+
+### Breaking Changes
+* The new AprilTag Cluster capability breaks legacy AprilTag OpModes resulting in compile errors for software that uses AprilTagDetection objects in both Android Studio and OnBot Java.
+  * Legacy AprilTag OpModes must be updated to check whether the returned AprilTag is a cluster or singleton,
+     and cast the returned detection into the correct type to access its elements.  See below:
+
+	 **Old method for AprilTag processing**
+    ```
+     for (AprilTagDetection detection : currentDetections) {
+       // Do single Tag processing here
+     }
+    ```
+
+     **New method for AprilTag Singleton/Cluster processing**
+
+    ```
+     for (AprilTagDetection detection : currentDetections) {
+       if (detection instanceof AprilTagSingleDetection) {
+         AprilTagSingleDetection singleDet = (AprilTagSingleDetection) detection;
+         // Do single Tag processing here
+       } else {
+         AprilTagClusterDetection clusterDet = (AprilTagClusterDetection) detection;
+         // Do cluster Tag processing here
+       }
+     }
+     ```
+    For more information about how to update your OpModes to fix the breaking change see: https://ftc-docs.firstinspires.org/apriltag-clusters
+
+  * About AprilTag clusters:
+    * Clusters are co-planar groups of two or more AprilTags wherein the position of each member tag is defined relative to a common origin
+    * This origin may be placed outside the bounds of the tags themselves to provide a more suitable "aiming" target
+    * Clusters are resilient to partial occlusion. Full 6DOF pose can be estimated from a cluster even if only a single member tag is visible. Of course, the more tags that are visible, the better and more stable the pose estimate will be
+    * All AprilTag samples have been updated to differentiate between standalone tags and clusters
+
+### Enhancements
+* Adds a tree view for robot configurations [issue 1821](https://github.com/FIRST-Tech-Challenge/FtcRobotController/issues/1821)
+* Gamepad indicators on the Driver Station are now colored orange if the respective gamepads are connected to the Android generic gamepad driver instead of the Driver Station's usermode USB driver
+* Updated AprilTag Library for BIOBUZZ. Notably, getCurrentGameTagLibrary() now returns BIOBUZZ tags.
+  * In BIOBUZZ, the Origin of each cluster is located in the center of the Cell opening for easy aiming.
+  * The Origin X,Y & Z Axes are now displayed by default on the preview image.
+  * <B>Unfortunately, since BIOBUZZ AprilTags move, they are not suitable for absolute Field Localization.</B>
+* Supports OctoQuad MK2 firmware v3.1.0, which adds diagnostics parameters for the IMU and MCU uptime
+
+### Bug Fixes
+* Fixes issue [2078](https://github.com/FIRST-Tech-Challenge/FtcRobotController/issues/2078) where battery
+voltage was not updated on driver station if OpMode did not send any telemetry.
+
+## Version 11.2.1 (20260724-093406)
+
+### Bug Fixes
+* Fixes issue [2099](https://github.com/FIRST-Tech-Challenge/FtcRobotController/issues/2099). Gradle and the AGP are now updated to 9.1 and 8.13.2 respectively.
+
+## Version 11.2 (20260707-102819)
+
+### Breaking Changes
+* Gradle is upgraded to v9.1 and the Android Gradle Plugin is updated to v8.13.2.  AGP v8.13.2 requires Android Studio Narwhal 3 Feature Drop or later.  Earlier versions of Android Studio will fail to sync the project.  Older versions of Android Studio may prompt the user to downgrade AGP.  Do not do this.  Gradle v9.1 removed support for features that older versions of the AGP use. Updating Gradle fixes a Windows 11 problem some teams may encounter if they have agressive security software installed on their machine.  For more context see [this Gradle issue](https://github.com/gradle/gradle/issues/31438)
+
+### Enhancements
+* New type of OpMode is now available. (`@Utility`)
+   * Utility opmodes that are not disabled will show up in the Utility menu (requires 11.2 or later DS and RC)
+* TestHardware Utility now available
+  * It allows you to test all servos, CR servos, motors, Color sensors, distance sensors, touch sensors, IMUs, webcams, and analog sensors in the config
+* TestGamepad Utility now available
+  * It allows you to see the results of your two gamepads to make sure it is what you expect and find problems with your gamepads.
+* Adds methods to PwmControl interface to allow you to setPulseWidth and getPulseWidth
+   * Both of these are in microseconds (uSeconds)
+   * This is an ADVANCED feature.   There is not a supporting sample.
+   * NOTE: You may see a slight difference since the hardware is not accurate to the microsecond
+* Adds ability to set UVC camera "quirks" from user code to control compatibility flags used inside the low level UVC driver. Addresses issue [1428](https://github.com/FIRST-Tech-Challenge/FtcRobotController/issues/1428)
+* Changes Apriltag Axis Display order on camera preview screen, to reflect updated Z axis direction.
+* The Driver Station app init button has a light teal background with the word init if
+   * the driver station and robot controller are connected and have the same team number
+   * there is at least one gamepad attached
+   * the timer is enabled (for an Autonomous OpMode)
+
+### Bug Fixes
+* Fixes issue [1949](https://github.com/FIRST-Tech-Challenge/FtcRobotController/issues/1949) overwriting the group with the default group when registering a OpMode with OpModeManager.register(OpModeMeta name, Class<? extends OpMode> clazz)
+* Fixes issue mentioned in [1890](https://github.com/FIRST-Tech-Challenge/FtcRobotController/issues/1890) where if
+  for a servo you change the direction or scaleRange and send the same setPosition that was sent
+  before, then it wouldn't update the servo.
+* Fixes an issue where Self-Inspect doesn't flag a driver station using -RC in it's name. The message is now:
+  * The team numbers in the robot controller and driver station names do not match, or a device name is invalid. Refer to the FTC Competition Manual for device naming rules.
+
 ## Version 11.1 (20251231-104637)
 
 ### Enhancements
@@ -78,11 +225,11 @@ The readme.md file located in the [/TeamCode/src/main/java/org/firstinspires/ftc
 
 ### Enhancements
 
-* OnBotJava now has the concept of a project.  
+* OnBotJava now has the concept of a project.
   A project is a collection of related files.  A project may be chosen by selecting 'Example Project'
-  from the 'File type:' dropdown.  Doing so will populate the dropdown to the immediate right with 
+  from the 'File type:' dropdown.  Doing so will populate the dropdown to the immediate right with
   a list of projects to choose from.
-  When selecting a project all of the related files appear in the left pane of the workspace 
+  When selecting a project all of the related files appear in the left pane of the workspace
   underneath a directory with the chosen project name.
   This is useful for example for ConceptExternalHardwareClass which has a dependency upon
   RobotHardware.  This feature simplifies the usage of this Concept example by automatically
@@ -100,7 +247,7 @@ The readme.md file located in the [/TeamCode/src/main/java/org/firstinspires/ftc
   * the timer is enabled (for an Autonomous OpMode)
 * Updated AprilTag Library for DECODE. Notably, getCurrentGameTagLibrary() now returns DECODE tags.
   * Since the AprilTags on the Obelisk should not be used for localization, the ConceptAprilTagLocalization samples only use those tags without the name 'Obelisk' in them.
-* OctoQuad I2C driver updated to support firmware v3.x 
+* OctoQuad I2C driver updated to support firmware v3.x
   * Adds support for odometry localizer on MK2 hardware revision
   * Adds ability to track position for an absolute encoder across multiple rotations
   * Note that some driver APIs have changed; minor updates to user software may be required
@@ -111,14 +258,14 @@ The readme.md file located in the [/TeamCode/src/main/java/org/firstinspires/ftc
 ## Version 10.3 (20250625-090416)
 
 ### Breaking Changes
-* The behavior of setGlobalErrorMsg() is changed.  Note that this is an SDK internal method that is not 
+* The behavior of setGlobalErrorMsg() is changed.  Note that this is an SDK internal method that is not
   meant to be used by team software or third party libraries.  Teams or libraries using this method should
-  find another means to communicate failure.  The design intent of setGlobalErrorMsg() is to report an 
+  find another means to communicate failure.  The design intent of setGlobalErrorMsg() is to report an
   error and force the user to restart the robot, which in certain circumstances when used inappropriately
   could cause a robot to continue running while Driver Station controls are disabled.  To prevent this,
   processing of a call to setGlobalErrorMsg() is deferred until the robot is in a known safe state.  This may
   mean that a call to setGlobalErrorMsg() that does not also result in stopping a running OpMode will appear
-  as though nothing happened until the robot is stopped, at which point, if clearGlobalErrorMsg() has not 
+  as though nothing happened until the robot is stopped, at which point, if clearGlobalErrorMsg() has not
   been called the message will appear on the Driver Station and a restart will be required.
   Addresses issue [1381](https://github.com/FIRST-Tech-Challenge/FtcRobotController/issues/1381)
 * Fixes getLatestResult in Limelight3A so if the Limelight hasn't provided data yet, it still returns an LLResult but valid will be false
@@ -132,12 +279,13 @@ The readme.md file located in the [/TeamCode/src/main/java/org/firstinspires/ftc
   to rename the file, the rename will fail.
 
 ### Enhancements
+* Adds a configuration item for a Full Range Servo.  Selecting this item expands the pulse width range from 500us to 2500us.  For comparison, the legacy Servo type defines the pulse width range as 600us to 2400us.
 * Improved the OBJ new file creation flow workflow. The new flow allows you to easily use samples, craft new custom OpModes and make new Java classes.
 * Added support for gamepad edge detection.
   * A new sample program `ConceptGamepadEdgeDetection` demonstrates its use.
 * Adds a blackboard member to the Opmode that maintains state between opmodes (but not between robot resets).  See the ConceptBlackboard sample for how to use it.
 * Updated PredominantColorProcessor to also return the predominant color in RGB, HSV and YCrCb color spaces.  Updated ConceptVisionColorSensor sample OpMode to display the getAnalysis() result in all three color spaces.
-* Adds support for the GoBilda Pinpoint 
+* Adds support for the GoBilda Pinpoint
   * Also adds `SensorGoBildaPinpoint` sample to show how to use it
 * Added `getArcLength()` and `getCircularity()` to ColorBlobLocatorProcessor.Blob.  Added BY_ARC_LENGTH and BY_CIRCULARITY as additional BlobCriteria.
 * Added `filterByCriteria()` and `sortByCriteria()` to ColorBlobLocatorProcessor.Util.
@@ -172,14 +320,14 @@ The readme.md file located in the [/TeamCode/src/main/java/org/firstinspires/ftc
 
 ### Breaking Changes
 
-* Support for Android Studio Ladybug.  Requires Android Studio Ladybug.  
+* Support for Android Studio Ladybug.  Requires Android Studio Ladybug.
 
 ### Known Issues
 
 * Android Studio Ladybug's bundled JDK is version 21.  JDK 21 has deprecated support for Java 1.8, and Ladybug will warn on this deprecation.
-  OnBotJava only supports Java 1.8, therefore, in order to ensure that software developed using Android Studio will 
+  OnBotJava only supports Java 1.8, therefore, in order to ensure that software developed using Android Studio will
   run within the OnBotJava environment, the targetCompatibility and sourceCompatibility versions for the SDK have been left at VERSION_1_8.
-  FIRST has decided that until it can devote the resources to migrating OnBotJava to a newer version of Java, the deprecation is the 
+  FIRST has decided that until it can devote the resources to migrating OnBotJava to a newer version of Java, the deprecation is the
   lesser of two non-optimal situations.
 
 ### Enhancements

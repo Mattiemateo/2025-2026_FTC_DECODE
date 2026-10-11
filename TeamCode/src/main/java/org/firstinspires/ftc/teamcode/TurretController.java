@@ -1,6 +1,5 @@
 package org.firstinspires.ftc.teamcode;
 
-import com.bylazar.configurables.annotations.Configurable;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
@@ -17,7 +16,6 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
-@Configurable
 public class TurretController {
 
     // --- Hardware ---
@@ -33,7 +31,9 @@ public class TurretController {
         I = 0.0,
         D = 0.0,
         F = 0.0;
-    public static double TURRET_MAX_POWER = 0.8;
+    // shortcut: provisional travel limits, measure safe travel before widening them.
+    public static double MIN_ANGLE = -45.0, MAX_ANGLE = 45.0;
+    public static double TURRET_MAX_POWER = 0.3;
     public static double SEARCH_POWER = 0.3; // Slower power for search movements
     public static double SEARCH_DWELL_TIME = 0.3; // Time to wait at each position (seconds)
     public static double TARGET_LOST_TIMEOUT = 2.0;
@@ -90,6 +90,8 @@ public class TurretController {
         } catch (Exception e) {
             telemetry.addData("Turret Init Error", e.getMessage());
             telemetry.addData("Stack Trace", e.getClass().getSimpleName());
+            stop();
+            throw new IllegalStateException("Turret initialization failed", e);
         }
     }
 
@@ -237,7 +239,7 @@ public class TurretController {
             boolean shouldMove = false;
 
             if (searchingRight) {
-                targetAngle = searchCenterAngle + searchAngle;
+                targetAngle = clampAngle(searchCenterAngle + searchAngle);
                 // If we've reached or passed the right limit, switch direction
                 if (currentAngle >= targetAngle - 2) {
                     // 2 degree tolerance
@@ -248,7 +250,7 @@ public class TurretController {
                     shouldMove = true;
                 }
             } else {
-                targetAngle = searchCenterAngle - searchAngle;
+                targetAngle = clampAngle(searchCenterAngle - searchAngle);
                 // If we've reached or passed the left limit, switch direction and increase angle
                 if (currentAngle <= targetAngle + 2) {
                     // 2 degree tolerance
@@ -281,18 +283,34 @@ public class TurretController {
     }
 
     private void setTargetAngleInternal(double angle) {
-        int targetPositionTicks = (int) (angle * TICKS_PER_DEGREE);
+        int targetPositionTicks = (int) (clampAngle(angle) * TICKS_PER_DEGREE);
         turretMotor.setTargetPosition(targetPositionTicks);
         turretMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
         turretMotor.setPower(TURRET_MAX_POWER);
     }
 
     public void enableAutoAim(boolean enable) {
+        if (autoAimEnabled && !enable) {
+            manualTargetAngle = getCurrentAngle();
+            isSearching = false;
+        }
         this.autoAimEnabled = enable;
     }
 
     public void setManualTargetAngle(double angle) {
-        this.manualTargetAngle = angle;
+        this.manualTargetAngle = clampAngle(angle);
+    }
+
+    public double getManualTargetAngle() {
+        return manualTargetAngle;
+    }
+
+    static double clampAngle(double angle) {
+        if (!Double.isFinite(angle) || !Double.isFinite(MIN_ANGLE)
+                || !Double.isFinite(MAX_ANGLE) || MIN_ANGLE >= MAX_ANGLE) {
+            throw new IllegalArgumentException("Turret angle and travel limits must be finite and ordered");
+        }
+        return Math.max(MIN_ANGLE, Math.min(MAX_ANGLE, angle));
     }
 
     public double getCurrentAngle() {
@@ -365,7 +383,7 @@ public class TurretController {
                     ? "IMU Tracking"
                     : "Vision Locked";
             } else if (isSearching) {
-                status = "Searching (360°)";
+                status = "Searching (limited travel)";
             } else {
                 status = "Searching";
             }
