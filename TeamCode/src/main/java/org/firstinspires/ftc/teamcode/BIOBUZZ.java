@@ -3,6 +3,7 @@ package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.teamcode.pedro.Constants;
 
@@ -16,7 +17,7 @@ public class BIOBUZZ extends LinearOpMode {
         DcMotor backRight = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.backRightName.get());
         DcMotor intake = hardwareMap.get(DcMotor.class, "intake");
         DcMotor transfer = hardwareMap.get(DcMotor.class, "transfer");
-        DcMotor flywheel = hardwareMap.get(DcMotor.class, "flywheel");
+        DcMotorEx flywheel = hardwareMap.get(DcMotorEx.class, "flywheel");
         DcMotor[] motors = {frontLeft, frontRight, backLeft, backRight, intake, transfer, flywheel};
         TurretController turret = new TurretController();
 
@@ -35,6 +36,7 @@ public class BIOBUZZ extends LinearOpMode {
             transfer.setDirection(DcMotor.Direction.REVERSE);
             flywheel.setDirection(DcMotor.Direction.REVERSE);
             flywheel.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+            FlywheelController flywheelController = new FlywheelController(flywheel);
             turret.init(hardwareMap, telemetry);
 
             telemetry.addLine("Center turret BEFORE INIT; encoder zero is the starting position.");
@@ -63,8 +65,7 @@ public class BIOBUZZ extends LinearOpMode {
                 backRight.setPower(powers[3]);
                 intake.setPower(0.6 * (gamepad1.right_trigger - gamepad1.left_trigger));
                 transfer.setPower(gamepad1.a == gamepad1.b ? 0 : gamepad1.a ? 0.8 : -0.8);
-                // shortcut: open-loop flywheel power, tune encoder velocity after choosing its gearbox.
-                flywheel.setPower(gamepad1.x ? 0.7 : 0);
+                flywheelController.setTargetRPM(gamepad1.x ? FlywheelController.DEFAULT_RPM : 0);
 
                 turret.enableAutoAim(gamepad1.right_bumper);
                 if (!gamepad1.right_bumper) {
@@ -72,7 +73,8 @@ public class BIOBUZZ extends LinearOpMode {
                     turret.setManualTargetAngle(turret.getManualTargetAngle() + movement * 45 * dt);
                 }
                 turret.update();
-                telemetry.addData("Flywheel power", flywheel.getPower());
+                telemetry.addData("Flywheel target RPM", flywheelController.getTargetRPM());
+                telemetry.addData("Flywheel measured RPM", flywheelController.getCurrentRPM());
                 telemetry.addData("Transfer power", transfer.getPower());
                 telemetry.update();
                 idle();

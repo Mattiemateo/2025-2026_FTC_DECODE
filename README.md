@@ -2,7 +2,7 @@
 
 Open this directory in Android Studio and deploy the **TeamCode** configuration. No new empty Android Studio project is needed. The BIOBUZZ setup lives on `biobuzz-season`; the complete previous project, including your pending changes, is preserved on `archive/decode-before-biobuzz` at `fb94e63`. Old team sources are also in `archive/2025-2026/teamcode`, outside the Android source set.
 
-Dependencies: FTC SDK **12.0.0**, Pedro Pathing **3.0.1**, AutoTune **1.0.1**, and Marrow **1.2.0**. Marrow is installed for future robot behaviors; this first manual TeleOp does not require a command framework. The previous explicit Sloth hot-reload plugin was removed; AutoTune brings its own compatible Sloth runtime. The existing Limelight pipeline **8**, turret encoder gearing, and IMU orientation (logo FORWARD, USB UP) are retained.
+Dependencies: FTC SDK **12.0.0**, Pedro Pathing **3.0.1**, AutoTune **1.0.1**, and Marrow **1.2.0**. Marrow is installed for future robot behaviors; this first manual TeleOp does not require a command framework. Sloth **0.3.2** and the matching Load plugin are installed for hot reloading, matching AutoTune’s runtime. The existing Limelight pipeline **8**, turret encoder gearing, and IMU orientation (logo FORWARD, USB UP) are retained.
 
 ## Hardware and first run
 
@@ -19,22 +19,32 @@ Use two REV hubs for the eight REV HD Hex motors. In the Robot Configuration, ch
 
 The pod names refer to the configured motor ports their encoder cables occupy. Two passive GoBilda pods need no Pinpoint. Confirm the encoder-port names and actual hub orientation in `teamcode/pedro/Constants.java` and the Two Wheel Tuner inputs.
 
-**Manually center the turret before pressing INIT.** There is no homing sensor; encoder zero means its position at INIT. Confirm the provisional -45° to +45° travel limits in `TurretController.java` before moving it. Software limits depend on correct centering and encoder wiring. Test wheel directions with the robot lifted, then verify mechanism directions at low power. Transfer and flywheel start with FORWARD direction; intake keeps your REVERSE setting. Drive directions match the previous BIOBUZZ TeleOp and are shared with Pedro's drivetrain config.
+**Manually center the turret before pressing INIT.** There is no homing sensor; encoder zero means its position at INIT. Confirm the provisional -45° to +45° travel limits in `TurretController.java` before moving it. Software limits depend on correct centering and encoder wiring. Test wheel directions with the robot lifted, then verify mechanism directions at low power. Intake, transfer, and flywheel keep your REVERSE settings. Drive directions use your updated Pedro drivetrain config.
 
 ## One-gamepad TeleOp: BIOBUZZ
 
 | Control | Action |
 | --- | --- |
-| Left stick / right stick X | Robot-relative translation / turn (60% maximum) |
+| Left stick / right stick X | Robot-relative translation / turn (80% maximum) |
 | Hold left bumper | 25% slow drive |
 | Right / left trigger | Intake forward / reverse (60% maximum) |
-| Hold A / B | Transfer forward / reverse (50%; both stops transfer) |
+| Hold A / B | Transfer forward / reverse (80%; both stops transfer) |
 | D-pad left / right | Adjust turret target (45°/second, limited travel) |
-| Hold X | Flywheel at 50% power; release to coast |
+| Hold X | Flywheel at 3000 RPM using its encoder; release to coast |
 | Hold right bumper | Existing Limelight auto aim and bounded target search |
 | Y | Stop all motors and end TeleOp |
 
-All motors stop in cleanup, including when initialization or the active loop fails. Flywheel power is intentionally open loop until the gearbox and shooting speed are measured. The previous flywheel controller and its RPM lookup table are preserved in the archive; their calibration is not assumed valid for this robot.
+All motors stop in cleanup, including when initialization or the active loop fails. `FlywheelController` restores last season’s 52 ticks/revolution, PIDF 9 / 0.5 / 0 / 15, and 3000 RPM target, confirmed for the unchanged gearing. Motor direction stays REVERSE as in your current TeleOp. Target and measured RPM appear in telemetry. The previous distance lookup table remains archived; this manual TeleOp uses a fixed target.
+
+The desktop driver station in `~/code/ftcdriverstation` maps Space to a forward intake toggle and Shift+Space to a reverse toggle. Press the same combination again to stop, or the other combination to change direction. P holds flywheel on, L holds transfer on, and G/H move the turret. Intake toggling is in the keyboard driver station; physical gamepad triggers remain hold-to-run.
+
+## Sloth Load
+
+Sync Gradle in Android Studio. **Sloth Load** is restored as a shared run configuration in `.run/Sloth Load.run.xml`, running `:TeamCode:deploySloth`. The plugin supplies that task and `removeSlothRemote`.
+
+Install **TeamCode normally once** after this dependency/controller update. Then use **Sloth Load** for Java changes under TeamCode. Full installs are required for dependency, resource, or SDK changes; clear old loaded code with `:TeamCode:removeSlothRemote` before a normal install. Android Studio’s TeamCode configuration includes that cleanup before its build/install step.
+
+[Official Sloth installation and hot reload instructions](https://github.com/Dairy-Foundation/Sloth)
 
 ## Pedro AutoTune
 
