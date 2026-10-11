@@ -18,10 +18,10 @@ public class Constants {
         c.frontRightName.set("rightFrontDrive");
         c.backLeftName.set("leftBackDrive");
         c.backRightName.set("rightBackDrive");
-        c.frontLeftDirection.set(DcMotorSimple.Direction.FORWARD);
+        c.frontLeftDirection.set(DcMotorSimple.Direction.REVERSE);
         c.backLeftDirection.set(DcMotorSimple.Direction.FORWARD);
-        c.frontRightDirection.set(DcMotorSimple.Direction.REVERSE);
-        c.backRightDirection.set(DcMotorSimple.Direction.REVERSE);
+        c.frontRightDirection.set(DcMotorSimple.Direction.FORWARD);
+        c.backRightDirection.set(DcMotorSimple.Direction.FORWARD);
     });
 
     // These are encoder-port names, even when pods share ports with drive motors.

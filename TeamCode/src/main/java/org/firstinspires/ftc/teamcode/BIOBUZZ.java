@@ -32,6 +32,8 @@ public class BIOBUZZ extends LinearOpMode {
             backLeft.setDirection(Constants.drivetrainConfig.backLeftDirection.get());
             backRight.setDirection(Constants.drivetrainConfig.backRightDirection.get());
             intake.setDirection(DcMotor.Direction.REVERSE);
+            transfer.setDirection(DcMotor.Direction.REVERSE);
+            flywheel.setDirection(DcMotor.Direction.REVERSE);
             flywheel.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
             turret.init(hardwareMap, telemetry);
 
@@ -52,7 +54,7 @@ public class BIOBUZZ extends LinearOpMode {
                     break;
                 }
 
-                double scale = gamepad1.left_bumper ? 0.25 : 0.6;
+                double scale = gamepad1.left_bumper ? 0.25 : 0.8;
                 double[] powers = drivePowers(-gamepad1.left_stick_y,
                         gamepad1.left_stick_x, gamepad1.right_stick_x, scale);
                 frontLeft.setPower(powers[0]);
@@ -60,9 +62,9 @@ public class BIOBUZZ extends LinearOpMode {
                 backLeft.setPower(powers[2]);
                 backRight.setPower(powers[3]);
                 intake.setPower(0.6 * (gamepad1.right_trigger - gamepad1.left_trigger));
-                transfer.setPower(gamepad1.a == gamepad1.b ? 0 : gamepad1.a ? 0.5 : -0.5);
+                transfer.setPower(gamepad1.a == gamepad1.b ? 0 : gamepad1.a ? 0.8 : -0.8);
                 // shortcut: open-loop flywheel power, tune encoder velocity after choosing its gearbox.
-                flywheel.setPower(gamepad1.x ? 0.5 : 0);
+                flywheel.setPower(gamepad1.x ? 0.7 : 0);
 
                 turret.enableAutoAim(gamepad1.right_bumper);
                 if (!gamepad1.right_bumper) {
