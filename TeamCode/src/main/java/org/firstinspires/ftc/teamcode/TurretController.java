@@ -43,6 +43,11 @@ public class TurretController {
     public static double SEARCH_INITIAL_ANGLE = 15.0; // Initial search sweep angle
     public static double SEARCH_ANGLE_INCREMENT = 20.0; // Angle increment per sweep
     public static double SEARCH_MAX_ANGLE = 135.0; // Maximum search sweep angle
+    // --- Where auto-aim gets the goal direction from ---
+    // ODOMETRY: robot pose from the odometry pods + IMU (see FieldAim). LIMELIGHT: camera tags.
+    public enum AimSource { ODOMETRY, LIMELIGHT }
+    public static AimSource AIM_SOURCE = AimSource.ODOMETRY;
+
     // --- BIOBUZZ goal tags (Competition Manual TU08, section 9.9) ---
     // Each CELL has a cluster of four 3.25 in. 36h11 tags on its underside: red 30-33 / 34-37,
     // blue 38-41 / 42-45. Set the Limelight pipeline's tag size to 82.55 mm and enable full 3D.
@@ -69,6 +74,8 @@ public class TurretController {
     private double targetBearingField = 0.0; // target direction in field frame (turret degrees)
     private double aimTargetAngle = 0.0;
     private ClusterFix lastClusterFix = null;
+    private boolean fieldAimValid = false;
+    private double fieldAimAngle = 0.0;
     private long lastFrameNanos = -1;
     private static final int HISTORY_SIZE = 50;
     private final long[] historyNanos = new long[HISTORY_SIZE];
@@ -110,9 +117,11 @@ public class TurretController {
                 turretMotor.setVelocityPIDFCoefficients(VELOCITY_P, VELOCITY_I, VELOCITY_D, VELOCITY_F);
             }
 
-            limelight = hardwareMap.get(Limelight3A.class, "limelight");
-            limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
-            limelight.start();
+            if (AIM_SOURCE == AimSource.LIMELIGHT) {
+                limelight = hardwareMap.get(Limelight3A.class, "limelight");
+                limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
+                limelight.start();
+            }
 
             targetLostTimer.reset();
             telemetry.addData("Turret Controller", "Initialized");
@@ -126,11 +135,11 @@ public class TurretController {
 
     public void update() {
         // Update robot orientation for MegaTag 2 (fuses IMU with vision for better accuracy)
-        if (limelight == null || turretMotor == null) {
+        if (turretMotor == null) {
             telemetry.addData("Turret", "Not initialized, skipping update");
             return;
         }
-        if (imu != null) {
+        if (imu != null && limelight != null) {
             try {
                 double robotYaw = getRobotHeading();
                 limelight.updateRobotOrientation(robotYaw);
@@ -143,7 +152,14 @@ public class TurretController {
         }
 
         recordHistory(getRobotHeading(), getCurrentAngle());
-        if (autoAimEnabled) {
+        if (autoAimEnabled && AIM_SOURCE == AimSource.ODOMETRY) {
+            if (fieldAimValid) {
+                aimTargetAngle = fieldAimAngle;
+                driveToAngle(fieldAimAngle, AIM_MAX_POWER);
+            } else {
+                setTargetAngleInternal(manualTargetAngle); // no pose yet: hold position
+            }
+        } else if (autoAimEnabled && limelight != null) {
             updateAutoAim();
         } else {
             updateManualControl();
@@ -256,6 +272,36 @@ public class TurretController {
                 turretMotor.setPower(SEARCH_POWER); // Use slower search power
             }
         }
+    }
+
+    /**
+     * Odometry aim: point the turret at a field point from the robot's pose.
+     * Field frame: inches, heading in degrees counter-clockwise (see FieldAim).
+     * Call every loop before update(); the turn-rate lead covers motor lag.
+     */
+    public void setFieldAim(double robotX, double robotY, double robotHeadingDeg, double goalX, double goalY) {
+        double leadHeading = robotHeadingDeg + getYawRateDegPerSec() * GYRO_LEAD_SEC;
+        fieldAimAngle = turretAngleToPoint(robotX, robotY, leadHeading, goalX, goalY);
+        fieldAimValid = true;
+    }
+
+    /** Stop odometry aim (e.g. pose unknown); the turret then holds where it is. */
+    public void clearFieldAim() {
+        fieldAimValid = false;
+    }
+
+    /** Turret angle that points from the robot at (goalX, goalY). */
+    static double turretAngleToPoint(double robotX, double robotY, double robotHeadingDeg,
+                                     double goalX, double goalY) {
+        double bearing = Math.toDegrees(Math.atan2(goalY - robotY, goalX - robotX));
+        return wrap180(turretSign() * (robotHeadingDeg - bearing));
+    }
+
+    private void driveToAngle(double angle, double maxPower) {
+        int targetPositionTicks = (int) (clampAngle(angle) * TICKS_PER_DEGREE);
+        turretMotor.setTargetPosition(targetPositionTicks);
+        setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        turretMotor.setPower(maxPower);
     }
 
     /** Gyro-stabilised aim: counter-rotate the turret against the robot's heading (and turn rate). */
@@ -557,7 +603,9 @@ public class TurretController {
         if (autoAimEnabled) {
             telemetry.addData("Aim Bearing / Turret Target", "%.1f° / %.1f°",
                 targetBearingField, aimTargetAngle);
-            telemetry.addData("Alliance", ALLIANCE);
+            telemetry.addData("Alliance / Aim Source", "%s / %s", ALLIANCE, AIM_SOURCE);
+        }
+        if (autoAimEnabled && limelight != null) {
             LLResult latest = limelight.getLatestResult();
             StringBuilder ids = new StringBuilder();
             if (latest != null && latest.getFiducialResults() != null) {
@@ -566,6 +614,13 @@ public class TurretController {
                     ids.append(f.getFiducialId());
                 }
             }
+            telemetry.addData("Limelight link", "%s | connected %b | running %b | last data %d ms ago",
+                limelight.getConnectionInfo(), limelight.isConnected(), limelight.isRunning(),
+                limelight.getTimeSinceLastUpdate());
+            telemetry.addData("Limelight status", limelight.getStatus() == null ? "none"
+                : String.format("pipeline %d (%s) | %.0f fps",
+                    limelight.getStatus().getPipelineIndex(), limelight.getStatus().getPipelineType(),
+                    limelight.getStatus().getFps()));
             telemetry.addData("Limelight pipeline / valid / tags", "%d / %b / %s",
                 latest == null ? -1 : latest.getPipelineIndex(),
                 latest != null && latest.isValid(),
@@ -577,7 +632,7 @@ public class TurretController {
                     ? String.format("%.2f m", lastClusterFix.distanceM) : "no 3D data (enable full 3D)");
             }
         }
-        if (autoAimEnabled) {
+        if (autoAimEnabled && AIM_SOURCE == AimSource.LIMELIGHT) {
             String status;
             if (isTracking()) {
                 status = targetLostTimer.seconds() > 0.1

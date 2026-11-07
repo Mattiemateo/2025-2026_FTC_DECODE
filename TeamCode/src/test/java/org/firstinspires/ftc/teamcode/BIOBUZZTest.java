@@ -108,6 +108,32 @@ public class BIOBUZZTest {
         assertArrayEquals(center, TurretController.clusterCenter(o, tags), 1e-9);
     }
 
+    @Test
+    public void odometryAimPointsTheTurretAtOurCell() {
+        boolean original = TurretController.TURRET_POSITIVE_IS_CLOCKWISE;
+        try {
+            TurretController.TURRET_POSITIVE_IS_CLOCKWISE = true;
+            // Red start: back on the red wall, facing +X (the HIVE).
+            double[] start = FieldAim.startPose(TurretController.Alliance.RED);
+            assertEquals(-63, start[0], 1e-9);
+            assertEquals(0, start[2], 1e-9);
+            // Far red cell is ahead and to the LEFT, so a clockwise-positive turret goes negative.
+            double[] far = FieldAim.goal(TurretController.Alliance.RED, FieldAim.Cell.FAR);
+            double expected = -Math.toDegrees(Math.atan2(far[1] - start[1], far[0] - start[0]));
+            assertEquals(expected, TurretController.turretAngleToPoint(start[0], start[1], start[2], far[0], far[1]), 1e-9);
+            assertTrue(expected < 0);
+            // Robot turns 10 deg left (CCW): turret turns 10 deg further clockwise to stay on target.
+            assertEquals(expected + 10,
+                    TurretController.turretAngleToPoint(start[0], start[1], 10, far[0], far[1]), 1e-9);
+            // Blue start faces -X; the audience blue cell is ahead and to the LEFT again.
+            double[] blue = FieldAim.startPose(TurretController.Alliance.BLUE);
+            double[] near = FieldAim.goal(TurretController.Alliance.BLUE, FieldAim.Cell.AUDIENCE);
+            assertTrue(TurretController.turretAngleToPoint(blue[0], blue[1], blue[2], near[0], near[1]) < 0);
+        } finally {
+            TurretController.TURRET_POSITIVE_IS_CLOCKWISE = original;
+        }
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void turretRejectsInvalidTargets() {
         TurretController.clampAngle(Double.NaN);

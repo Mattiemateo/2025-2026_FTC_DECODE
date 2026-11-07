@@ -4,6 +4,8 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.pedropathing.localization.Localizer;
+import com.pedropathing.math.Pose;
 import org.firstinspires.ftc.teamcode.pedro.Constants;
 
 /**
@@ -11,7 +13,9 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
  *
  * Left stick: drive/strafe | Right stick X: turn
  * Left/Right bumper: turn turret | Triangle: toggle auto-aim
- * During INIT: Circle = RED alliance, Cross = BLUE alliance (auto-aim only targets our HIVE)
+ * D-pad up/down: the FAR / AUDIENCE cell of our HIVE is tipped up (auto-aim target)
+ * Options: robot is back at its start spot, re-zero odometry there
+ * During INIT: Circle = RED alliance, Cross = BLUE alliance
  * Triggers: intake in/out | Cross/Circle: transfer forward/reverse | Square: flywheel
  */
 @TeleOp(name = "BIOBUZZ", group = "BIOBUZZ")
@@ -23,21 +27,33 @@ public class BIOBUZZ extends LinearOpMode {
     private DcMotor frontLeft, frontRight, backLeft, backRight, intake, transfer;
     private FlywheelController flywheel;
     private final TurretController turret = new TurretController();
+    private Localizer localizer;
+    private String odometryError;
 
     @Override
     public void runOpMode() {
-        initHardware();
-
         // init() zeroes the turret encoder, so wherever the turret sits now is home (0).
+        // It also sets up the IMU, so it runs before the odometry (which reads that IMU).
         turret.init(hardwareMap, telemetry);
         turret.enableAutoAim(false);
 
-        // Pick the alliance during INIT so auto-aim only locks onto our own HIVE's tags.
+        // Odometry before the drive motors: it may reset the pod encoders, which share drive ports.
+        try {
+            localizer = Constants.createLocalizer(hardwareMap);
+        } catch (RuntimeException e) {
+            localizer = null;
+            odometryError = e.getMessage(); // e.g. Two Wheel Tuner values not filled in yet
+        }
+        initHardware();
+
+        // Pick the alliance during INIT: it sets the start spot and which HIVE auto-aim targets.
         while (opModeInInit()) {
             if (gamepad1.circle) TurretController.ALLIANCE = TurretController.Alliance.RED;
             if (gamepad1.cross) TurretController.ALLIANCE = TurretController.Alliance.BLUE;
             telemetry.addData("Alliance", "%s  (Circle = RED, Cross = BLUE)", TurretController.ALLIANCE);
             telemetry.addLine("Turret home = current position. Center it before INIT.");
+            telemetry.addLine("Start: back against our alliance wall, centred, facing the HIVE.");
+            if (localizer == null) telemetry.addData("Odometry OFF", odometryError);
             telemetry.addLine("Bumpers: turret | Triangle: auto-aim | Square: flywheel");
             telemetry.update();
             idle();
@@ -45,6 +61,8 @@ public class BIOBUZZ extends LinearOpMode {
 
         boolean autoAim = false;
         boolean lastTriangle = false;
+        FieldAim.Cell cell = FieldAim.Cell.FAR;
+        resetPoseToStart();
 
         try {
             while (opModeIsActive()) {
@@ -53,6 +71,11 @@ public class BIOBUZZ extends LinearOpMode {
                 intake.setPower(INTAKE_POWER * (gamepad1.right_trigger - gamepad1.left_trigger));
                 transfer.setPower(TRANSFER_POWER * buttonAxis(gamepad1.cross, gamepad1.circle));
                 flywheel.setTargetRPM(gamepad1.square ? FlywheelController.DEFAULT_RPM : 0);
+
+                if (gamepad1.dpad_up) cell = FieldAim.Cell.FAR;
+                if (gamepad1.dpad_down) cell = FieldAim.Cell.AUDIENCE;
+                if (gamepad1.options) resetPoseToStart();
+                updateFieldAim(cell);
 
                 if (gamepad1.triangle && !lastTriangle) autoAim = !autoAim;
                 lastTriangle = gamepad1.triangle;
@@ -71,6 +94,52 @@ public class BIOBUZZ extends LinearOpMode {
         } finally {
             stopAll();
         }
+    }
+
+    private boolean hasAlliance() {
+        return TurretController.ALLIANCE != TurretController.Alliance.ANY;
+    }
+
+    private void resetPoseToStart() {
+        if (localizer == null || !hasAlliance()) return;
+        double[] start = FieldAim.startPose(TurretController.ALLIANCE);
+        try {
+            localizer.setPose(new Pose(start[0], start[1], Math.toRadians(start[2])));
+        } catch (RuntimeException e) {
+            localizer = null;
+            odometryError = e.getMessage();
+        }
+    }
+
+    /** Update odometry and hand the turret the angle to our upward CELL. */
+    private void updateFieldAim(FieldAim.Cell cell) {
+        if (localizer == null) {
+            turret.clearFieldAim();
+            telemetry.addData("Odometry OFF", odometryError);
+            return;
+        }
+        Pose pose;
+        try {
+            localizer.update();
+            pose = localizer.pose();
+        } catch (RuntimeException e) {
+            localizer = null; // untuned or broken odometry: keep driving, just no auto-aim
+            odometryError = e.getMessage();
+            turret.clearFieldAim();
+            return;
+        }
+        double headingDeg = Math.toDegrees(pose.heading());
+        telemetry.addData("Robot Pose (in, deg)", "x %.1f  y %.1f  h %.1f", pose.x(), pose.y(), headingDeg);
+        if (!hasAlliance()) {
+            turret.clearFieldAim();
+            telemetry.addLine("Pick an alliance during INIT for auto-aim");
+            return;
+        }
+        double[] goal = FieldAim.goal(TurretController.ALLIANCE, cell);
+        double[] from = FieldAim.turretPosition(pose.x(), pose.y(), headingDeg);
+        turret.setFieldAim(from[0], from[1], headingDeg, goal[0], goal[1]);
+        telemetry.addData("Aim Cell / Distance", "%s / %.0f in", cell,
+                Math.hypot(goal[0] - from[0], goal[1] - from[1]));
     }
 
     private void initHardware() {

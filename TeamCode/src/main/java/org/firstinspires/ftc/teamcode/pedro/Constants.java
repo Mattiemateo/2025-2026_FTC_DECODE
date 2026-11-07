@@ -30,7 +30,7 @@ public class Constants {
         c.yPodName.set("rightFrontDrive");
         c.imuName.set("imu");
         c.imu.set(new RevHubIMU(new RevHubOrientationOnRobot(
-                RevHubOrientationOnRobot.LogoFacingDirection.FORWARD,
+                RevHubOrientationOnRobot.LogoFacingDirection.RIGHT,
                 RevHubOrientationOnRobot.UsbFacingDirection.UP)));
         // Paste Two Wheel Tuner output here; measurements stay required until tuned.
     });
