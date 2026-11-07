@@ -60,7 +60,7 @@ public class TurretController {
     public static double GYRO_LEAD_SEC = 0.05; // aim ahead by turn rate x this, covers motor lag (0 = off)
     public static double AIM_MAX_POWER = 0.6; // auto-aim needs to be faster than manual to keep up with spins
     public static boolean IMU_SEARCH_ENABLED = true; // Enable/disable IMU-based search when target is lost
-    public int LIMELIGHT_PIPELINE = 8; // this should probably stay like this
+    public int LIMELIGHT_PIPELINE = 1; // this should probably stay like this
 
     // --- State ---
     private boolean autoAimEnabled = false;
@@ -558,6 +558,18 @@ public class TurretController {
             telemetry.addData("Aim Bearing / Turret Target", "%.1f° / %.1f°",
                 targetBearingField, aimTargetAngle);
             telemetry.addData("Alliance", ALLIANCE);
+            LLResult latest = limelight.getLatestResult();
+            StringBuilder ids = new StringBuilder();
+            if (latest != null && latest.getFiducialResults() != null) {
+                for (LLResultTypes.FiducialResult f : latest.getFiducialResults()) {
+                    if (ids.length() > 0) ids.append(',');
+                    ids.append(f.getFiducialId());
+                }
+            }
+            telemetry.addData("Limelight pipeline / valid / tags", "%d / %b / %s",
+                latest == null ? -1 : latest.getPipelineIndex(),
+                latest != null && latest.isValid(),
+                ids.length() == 0 ? "none" : ids.toString());
             if (lastClusterFix != null) {
                 int firstId = FIRST_TAG_ID + lastClusterFix.clusterIndex * 4;
                 telemetry.addData("Goal Tags / Seen", "%d-%d / %d", firstId, firstId + 3, lastClusterFix.tagCount);
