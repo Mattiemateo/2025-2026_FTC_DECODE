@@ -27,17 +27,17 @@ public class Constants {
 
     // These are encoder-port names, even when pods share ports with drive motors.
     public static TwoWheelConfig localizerConfig = new TwoWheelConfig(c -> {
-        c.xPodName.set("leftBackDrive");
+        c.xPodName.set("rightBackDrive");
         c.yPodName.set("rightFrontDrive");
         c.imuName.set("imu");
-        // Two Wheel Tuner output, 2026-11-07. NOTE: forwardTicksToInches looks wrong. A goBILDA 4-Bar
-        // pod should read ~0.00198 in/tick (strafe matches that); 0.92 means the forward pod barely
-        // counted during tuning. Check it with the "BIOBUZZ Pod Check" OpMode and re-tune.
-        c.xPodOffset.set(0.7321572649321884);
-        c.yPodOffset.set(0.352756119947756);
-        c.forwardTicksToInches.set(0.920599228929502);
-        c.strafeTicksToInches.set(0.00202986839840422);
-        c.xPodDirection.set(Encoder.FORWARD);
+        // Two Wheel Tuner output, 2026-11-07 (second run, forward pod fixed and moved to rightBackDrive).
+        // NOTE: strafeTicksToInches 0.00357 is ~1.8x the first run (0.00203) and the ~0.00198 expected
+        // for a goBILDA 4-Bar pod. Check one tile sideways with "BIOBUZZ Pod Check" / Robot Pose.
+        c.xPodOffset.set(-2.9544544296830106);
+        c.yPodOffset.set(-0.31120939571087114);
+        c.forwardTicksToInches.set(0.0020144555737033826);
+        c.strafeTicksToInches.set(0.003571875173051589);
+        c.xPodDirection.set(Encoder.REVERSE);
         c.yPodDirection.set(Encoder.FORWARD);
         c.imu.set(new RevHubIMU(new RevHubOrientationOnRobot(
                 RevHubOrientationOnRobot.LogoFacingDirection.RIGHT,
