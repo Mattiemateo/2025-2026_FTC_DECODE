@@ -5,6 +5,7 @@ import com.pedropathing.algorithm.ForesightConfig;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.revhub.drivetrains.Mecanum;
 import com.pedropathing.revhub.drivetrains.MecanumConfig;
+import com.pedropathing.revhub.localizers.Encoder;
 import com.pedropathing.revhub.localizers.RevHubIMU;
 import com.pedropathing.revhub.localizers.TwoWheelConfig;
 import com.pedropathing.revhub.localizers.TwoWheelLocalizer;
@@ -29,10 +30,18 @@ public class Constants {
         c.xPodName.set("leftBackDrive");
         c.yPodName.set("rightFrontDrive");
         c.imuName.set("imu");
+        // Two Wheel Tuner output, 2026-11-07. NOTE: forwardTicksToInches looks wrong. A goBILDA 4-Bar
+        // pod should read ~0.00198 in/tick (strafe matches that); 0.92 means the forward pod barely
+        // counted during tuning. Check it with the "BIOBUZZ Pod Check" OpMode and re-tune.
+        c.xPodOffset.set(0.7321572649321884);
+        c.yPodOffset.set(0.352756119947756);
+        c.forwardTicksToInches.set(0.920599228929502);
+        c.strafeTicksToInches.set(0.00202986839840422);
+        c.xPodDirection.set(Encoder.FORWARD);
+        c.yPodDirection.set(Encoder.FORWARD);
         c.imu.set(new RevHubIMU(new RevHubOrientationOnRobot(
                 RevHubOrientationOnRobot.LogoFacingDirection.RIGHT,
                 RevHubOrientationOnRobot.UsbFacingDirection.UP)));
-        // Paste Two Wheel Tuner output here; measurements stay required until tuned.
     });
 
     public static ForesightConfig foresightConfig = new ForesightConfig(c -> {
