@@ -11,6 +11,7 @@ import org.firstinspires.ftc.teamcode.pedro.Constants;
  *
  * Left stick: drive/strafe | Right stick X: turn
  * Left/Right bumper: turn turret | Triangle: toggle auto-aim
+ * During INIT: Circle = RED alliance, Cross = BLUE alliance (auto-aim only targets our HIVE)
  * Triggers: intake in/out | Cross/Circle: transfer forward/reverse | Square: flywheel
  */
 @TeleOp(name = "BIOBUZZ", group = "BIOBUZZ")
@@ -31,10 +32,16 @@ public class BIOBUZZ extends LinearOpMode {
         turret.init(hardwareMap, telemetry);
         turret.enableAutoAim(false);
 
-        telemetry.addLine("Turret home = current position. Center it before INIT.");
-        telemetry.addLine("Bumpers: turret | Triangle: auto-aim | Square: flywheel");
-        telemetry.update();
-        waitForStart();
+        // Pick the alliance during INIT so auto-aim only locks onto our own HIVE's tags.
+        while (opModeInInit()) {
+            if (gamepad1.circle) TurretController.ALLIANCE = TurretController.Alliance.RED;
+            if (gamepad1.cross) TurretController.ALLIANCE = TurretController.Alliance.BLUE;
+            telemetry.addData("Alliance", "%s  (Circle = RED, Cross = BLUE)", TurretController.ALLIANCE);
+            telemetry.addLine("Turret home = current position. Center it before INIT.");
+            telemetry.addLine("Bumpers: turret | Triangle: auto-aim | Square: flywheel");
+            telemetry.update();
+            idle();
+        }
 
         boolean autoAim = false;
         boolean lastTriangle = false;

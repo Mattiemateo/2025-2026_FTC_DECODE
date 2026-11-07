@@ -43,6 +43,22 @@ public class TurretController {
     public static double SEARCH_INITIAL_ANGLE = 15.0; // Initial search sweep angle
     public static double SEARCH_ANGLE_INCREMENT = 20.0; // Angle increment per sweep
     public static double SEARCH_MAX_ANGLE = 135.0; // Maximum search sweep angle
+    // --- BIOBUZZ goal tags (Competition Manual TU08, section 9.9) ---
+    // Each CELL has a cluster of four 3.25 in. 36h11 tags on its underside: red 30-33 / 34-37,
+    // blue 38-41 / 42-45. Set the Limelight pipeline's tag size to 82.55 mm and enable full 3D.
+    public enum Alliance { RED, BLUE, ANY }
+    public static Alliance ALLIANCE = Alliance.ANY;
+    static final int FIRST_TAG_ID = 30;
+    // Tag centres along the sticker, relative to the cluster centre (6.5 in. and 2.75 in.).
+    static final double[] TAG_OFFSETS_M = {-0.1651, -0.06985, 0.06985, 0.1651};
+
+    // --- Gyro-stabilised auto-aim ---
+    // Set from the bumpers: true if RIGHT bumper (positive angle) turns the turret clockwise seen from above.
+    // Wrong value = the turret turns WITH the robot instead of against it, and aims away from the tag.
+    public static boolean TURRET_POSITIVE_IS_CLOCKWISE = true;
+    public static double VISION_FILTER = 0.5; // 0..1, how much each camera frame corrects the aim (lower = smoother)
+    public static double GYRO_LEAD_SEC = 0.05; // aim ahead by turn rate x this, covers motor lag (0 = off)
+    public static double AIM_MAX_POWER = 0.6; // auto-aim needs to be faster than manual to keep up with spins
     public static boolean IMU_SEARCH_ENABLED = true; // Enable/disable IMU-based search when target is lost
     public int LIMELIGHT_PIPELINE = 8; // this should probably stay like this
 
@@ -50,7 +66,16 @@ public class TurretController {
     private boolean autoAimEnabled = false;
     private double manualTargetAngle = 0.0;
     private double manualDirection = 0.0;
-    private double lastKnownTargetAngleField = 0.0;
+    private double targetBearingField = 0.0; // target direction in field frame (turret degrees)
+    private double aimTargetAngle = 0.0;
+    private ClusterFix lastClusterFix = null;
+    private long lastFrameNanos = -1;
+    private static final int HISTORY_SIZE = 50;
+    private final long[] historyNanos = new long[HISTORY_SIZE];
+    private final double[] historyHeading = new double[HISTORY_SIZE];
+    private final double[] historyTurret = new double[HISTORY_SIZE];
+    private int historyIndex = 0;
+    private int historyCount = 0;
     private double lastKnownDistance = 0.0;
     private boolean targetWasVisible = false;
     private final ElapsedTime targetLostTimer = new ElapsedTime();
@@ -117,6 +142,7 @@ public class TurretController {
             }
         }
 
+        recordHistory(getRobotHeading(), getCurrentAngle());
         if (autoAimEnabled) {
             updateAutoAim();
         } else {
@@ -130,86 +156,37 @@ public class TurretController {
         double currentTurretAngle = getCurrentAngle();
 
         LLResult result = limelight.getLatestResult();
-        if (hasValidTarget(result)) {
-            // TARGET VISIBLE: Track directly using vision
-
-            // If we were searching, stop and transition back to position control
+        ClusterFix fix = findCluster(result);
+        if (fix != null) {
+            // TARGET VISIBLE: update the target's field bearing from this camera frame.
             if (isSearching) {
-                turretMotor.setPower(0); // Stop the search rotation
                 isSearching = false;
-                // Reset search angle for next time
                 searchAngle = SEARCH_INITIAL_ANGLE;
             }
-
-            double tx = result.getFiducialResults().get(0).getTargetXDegrees();
-
-            // Store the field-centric angle for use when target is lost
-            // Note: Negating robotHeading to fix reversed IMU compensation
-            lastKnownTargetAngleField = -robotHeading + currentTurretAngle + tx;
+            long frameNanos = result.getControlHubTimeStampNanos();
+            if (frameNanos != lastFrameNanos) {
+                lastFrameNanos = frameNanos;
+                // Use the heading and turret angle from when the frame was captured, not now.
+                double ageMs = result.getStaleness() + result.getCaptureLatency() + result.getTargetingLatency();
+                double[] then = historyAt(System.nanoTime() - (long) (ageMs * 1e6));
+                double tx = fix.txDeg;
+                double measured = fieldBearing(then[1], tx, then[0]);
+                targetBearingField = targetWasVisible
+                    ? wrap180(targetBearingField + VISION_FILTER * wrap180(measured - targetBearingField))
+                    : measured;
+            }
             targetWasVisible = true;
             targetLostTimer.reset();
-
-            // While target is visible, directly aim at it (simple control)
-            double desiredTurretAngle = currentTurretAngle + tx;
-            setTargetAngleInternal(desiredTurretAngle);
-
-            // Calculate and store distance to the AprilTag target
-            List<LLResultTypes.FiducialResult> fiducials =
-                result.getFiducialResults();
-            if (fiducials != null && !fiducials.isEmpty()) {
-                // Get the first detected AprilTag
-                LLResultTypes.FiducialResult fiducial = fiducials.get(0);
-
-                // Get robot pose relative to the AprilTag (most useful for distance)
-                Pose3D robotPoseTargetSpace =
-                    fiducial.getRobotPoseTargetSpace();
-                if (robotPoseTargetSpace != null) {
-                    // Calculate 3D distance from robot to AprilTag
-                    double x = robotPoseTargetSpace.getPosition().x;
-                    double y = robotPoseTargetSpace.getPosition().y;
-                    double z = robotPoseTargetSpace.getPosition().z;
-                    this.lastKnownDistance = Math.sqrt(x * x + y * y + z * z);
-                    telemetry.addData(
-                        "Distance Method",
-                        "RobotPoseTargetSpace"
-                    );
-                    telemetry.addData(
-                        "Distance (X,Y,Z)",
-                        "%.1f, %.1f, %.1f",
-                        x,
-                        y,
-                        z
-                    );
-                } else {
-                    telemetry.addData(
-                        "Distance Method",
-                        "RobotPoseTargetSpace NULL"
-                    );
-                    telemetry.addData(
-                        "Distance Warning",
-                        "Enable '3D' in Limelight pipeline"
-                    );
-                }
-            } else {
-                telemetry.addData("Distance Method", "No fiducials detected");
-            }
+            aimAtBearing(robotHeading);
+            lastClusterFix = fix;
+            if (fix.distanceM > 0) lastKnownDistance = fix.distanceM;
         } else if (
             targetWasVisible &&
             targetLostTimer.seconds() < TARGET_LOST_TIMEOUT &&
             IMU_SEARCH_ENABLED
         ) {
-            // TARGET LOST: Use IMU-based search to maintain field-centric aim (if enabled)
-            // Calculate turret angle needed to point at the last known field-centric target
-            // This compensates for robot rotation automatically
-            // Note: Negating robotHeading to fix reversed IMU compensation
-            double desiredTurretAngle =
-                lastKnownTargetAngleField - (-robotHeading);
-
-            // Normalize angle to [-180, 180] to avoid the turret taking the long way
-            while (desiredTurretAngle > 180) desiredTurretAngle -= 360;
-            while (desiredTurretAngle < -180) desiredTurretAngle += 360;
-
-            setTargetAngleInternal(desiredTurretAngle);
+            // TARGET LOST: keep pointing at the last known field bearing using the IMU only.
+            aimAtBearing(robotHeading);
             isSearching = false;
         } else {
             // TARGET LOST: IMU tracking disabled or timeout expired
@@ -281,6 +258,176 @@ public class TurretController {
         }
     }
 
+    /** Gyro-stabilised aim: counter-rotate the turret against the robot's heading (and turn rate). */
+    private void aimAtBearing(double robotHeading) {
+        double leadHeading = robotHeading + getYawRateDegPerSec() * GYRO_LEAD_SEC;
+        aimTargetAngle = turretAngleFor(targetBearingField, leadHeading);
+        int targetPositionTicks = (int) (clampAngle(aimTargetAngle) * TICKS_PER_DEGREE);
+        turretMotor.setTargetPosition(targetPositionTicks);
+        setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        turretMotor.setPower(AIM_MAX_POWER);
+    }
+
+    /** +1 when positive turret angles turn the turret clockwise (seen from above), else -1. */
+    static double turretSign() {
+        return TURRET_POSITIVE_IS_CLOCKWISE ? 1.0 : -1.0;
+    }
+
+    /**
+     * Field bearing of the target, in turret degrees, independent of where the robot points.
+     * IMU yaw is counter-clockwise positive; Limelight tx is positive when the target is right of center.
+     */
+    static double fieldBearing(double turretAngle, double tx, double robotHeading) {
+        double s = turretSign();
+        return wrap180(turretAngle + s * tx - s * robotHeading);
+    }
+
+    /** Turret angle that points at a field bearing for the given robot heading. */
+    static double turretAngleFor(double bearing, double robotHeading) {
+        return wrap180(bearing + turretSign() * robotHeading);
+    }
+
+    static double wrap180(double angle) {
+        angle = angle % 360.0;
+        if (angle > 180) angle -= 360;
+        if (angle <= -180) angle += 360;
+        return angle;
+    }
+
+    private void recordHistory(double heading, double turretAngle) {
+        historyIndex = (historyIndex + 1) % HISTORY_SIZE;
+        historyNanos[historyIndex] = System.nanoTime();
+        historyHeading[historyIndex] = heading;
+        historyTurret[historyIndex] = turretAngle;
+        if (historyCount < HISTORY_SIZE) historyCount++;
+    }
+
+    /** {heading, turretAngle} recorded closest to (at or before) the given time. */
+    private double[] historyAt(long nanos) {
+        int index = historyIndex;
+        for (int i = 0; i < historyCount; i++) {
+            int candidate = (historyIndex - i + HISTORY_SIZE) % HISTORY_SIZE;
+            index = candidate;
+            if (historyNanos[candidate] <= nanos) break;
+        }
+        return new double[] {historyHeading[index], historyTurret[index]};
+    }
+
+    private double getYawRateDegPerSec() {
+        try {
+            return imu.getRobotAngularVelocity(AngleUnit.DEGREES).zRotationRate;
+        } catch (Exception e) {
+            return 0.0;
+        }
+    }
+
+    /** Where the goal is in this camera frame: the centre of our alliance's highest visible tag cluster. */
+    static final class ClusterFix {
+        final int clusterIndex; // 0: IDs 30-33, 1: 34-37, 2: 38-41, 3: 42-45
+        final int tagCount;
+        final double txDeg; // horizontal angle to the cluster centre, positive = right
+        final double distanceM; // camera to cluster centre, 0 if 3D data is unavailable
+
+        ClusterFix(int clusterIndex, int tagCount, double txDeg, double distanceM) {
+            this.clusterIndex = clusterIndex;
+            this.tagCount = tagCount;
+            this.txDeg = txDeg;
+            this.distanceM = distanceM;
+        }
+    }
+
+    static boolean allianceOwnsCluster(int clusterIndex) {
+        switch (ALLIANCE) {
+            case RED: return clusterIndex == 0 || clusterIndex == 1;
+            case BLUE: return clusterIndex == 2 || clusterIndex == 3;
+            default: return clusterIndex >= 0 && clusterIndex <= 3;
+        }
+    }
+
+    private ClusterFix findCluster(LLResult result) {
+        if (result == null || !result.isValid()) return null;
+        List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
+        if (fiducials == null || fiducials.isEmpty()) return null;
+
+        // Group visible tags by cluster, keep our alliance's, pick the highest (largest ty).
+        int bestCluster = -1;
+        double bestTy = Double.NEGATIVE_INFINITY;
+        for (int cluster = 0; cluster < 4; cluster++) {
+            if (!allianceOwnsCluster(cluster)) continue;
+            double tySum = 0;
+            int count = 0;
+            for (LLResultTypes.FiducialResult f : fiducials) {
+                if (clusterOf(f.getFiducialId()) == cluster) {
+                    tySum += f.getTargetYDegrees();
+                    count++;
+                }
+            }
+            if (count > 0 && tySum / count > bestTy) {
+                bestTy = tySum / count;
+                bestCluster = cluster;
+            }
+        }
+        if (bestCluster < 0) return null;
+
+        List<Double> offsets = new java.util.ArrayList<>();
+        List<double[]> positions = new java.util.ArrayList<>();
+        double txSum = 0;
+        for (LLResultTypes.FiducialResult f : fiducials) {
+            if (clusterOf(f.getFiducialId()) != bestCluster) continue;
+            txSum += f.getTargetXDegrees();
+            Pose3D pose = f.getTargetPoseCameraSpace();
+            if (pose == null) continue;
+            double x = pose.getPosition().x, y = pose.getPosition().y, z = pose.getPosition().z;
+            if (z <= 0) continue; // no 3D data
+            offsets.add(TAG_OFFSETS_M[(f.getFiducialId() - FIRST_TAG_ID) % 4]);
+            positions.add(new double[] {x, y, z});
+        }
+        int tagCount = Math.max(offsets.size(), 1);
+        if (positions.isEmpty()) {
+            // No 3D poses: average the tags' angles (exact only when the tags straddle the centre).
+            int seen = 0;
+            for (LLResultTypes.FiducialResult f : fiducials) if (clusterOf(f.getFiducialId()) == bestCluster) seen++;
+            return new ClusterFix(bestCluster, seen, txSum / seen, 0);
+        }
+        double[] offsetArray = new double[offsets.size()];
+        for (int i = 0; i < offsetArray.length; i++) offsetArray[i] = offsets.get(i);
+        double[] center = clusterCenter(offsetArray, positions.toArray(new double[0][]));
+        double txDeg = Math.toDegrees(Math.atan2(center[0], center[2]));
+        double distance = Math.sqrt(center[0] * center[0] + center[1] * center[1] + center[2] * center[2]);
+        return new ClusterFix(bestCluster, tagCount, txDeg, distance);
+    }
+
+    static int clusterOf(int tagId) {
+        if (tagId < FIRST_TAG_ID || tagId >= FIRST_TAG_ID + 16) return -1;
+        return (tagId - FIRST_TAG_ID) / 4;
+    }
+
+    /**
+     * Cluster centre in camera space from tags at known offsets along the sticker.
+     * With 2+ tags the sticker line is fitted through them, so the result does not depend on
+     * which tags are visible. With one tag, that tag's position is used (up to 6.5 in off).
+     */
+    static double[] clusterCenter(double[] offsets, double[][] positions) {
+        int n = offsets.length;
+        double meanOffset = 0;
+        double[] meanPos = new double[3];
+        for (int i = 0; i < n; i++) {
+            meanOffset += offsets[i] / n;
+            for (int k = 0; k < 3; k++) meanPos[k] += positions[i][k] / n;
+        }
+        double spread = 0;
+        double[] slope = new double[3];
+        for (int i = 0; i < n; i++) {
+            double d = offsets[i] - meanOffset;
+            spread += d * d;
+            for (int k = 0; k < 3; k++) slope[k] += d * (positions[i][k] - meanPos[k]);
+        }
+        if (spread < 1e-9) return meanPos;
+        double[] center = new double[3];
+        for (int k = 0; k < 3; k++) center[k] = meanPos[k] - meanOffset * slope[k] / spread;
+        return center;
+    }
+
     private void updateManualControl() {
         double degPerSec = manualVelocity(manualDirection, getCurrentAngle());
         if (degPerSec != 0) {
@@ -315,6 +462,10 @@ public class TurretController {
         if (autoAimEnabled && !enable) {
             manualTargetAngle = getCurrentAngle();
             isSearching = false;
+        }
+        if (!autoAimEnabled && enable) {
+            targetWasVisible = false; // start from a fresh camera fix, not an old bearing
+            lastFrameNanos = -1;
         }
         this.autoAimEnabled = enable;
     }
@@ -378,13 +529,6 @@ public class TurretController {
         }
     }
 
-    private boolean hasValidTarget(LLResult result) {
-        if (result == null || !result.isValid()) return false;
-        List<LLResultTypes.FiducialResult> fiducials =
-            result.getFiducialResults();
-        return fiducials != null && !fiducials.isEmpty();
-    }
-
     public void stop() {
         if (turretMotor != null) turretMotor.setPower(0);
         if (limelight != null) limelight.stop();
@@ -408,7 +552,19 @@ public class TurretController {
             turretMotor.getPower(), turretMotor.getVelocity());
         telemetry.addData("Turret Jog Dir / Run Mode", "%.0f / %s",
             manualDirection, turretMotor.getMode());
-        telemetry.addData("Robot Heading", "%.1f°", getRobotHeading());
+        telemetry.addData("Robot Heading / Turn Rate", "%.1f° / %.0f°/s",
+            getRobotHeading(), getYawRateDegPerSec());
+        if (autoAimEnabled) {
+            telemetry.addData("Aim Bearing / Turret Target", "%.1f° / %.1f°",
+                targetBearingField, aimTargetAngle);
+            telemetry.addData("Alliance", ALLIANCE);
+            if (lastClusterFix != null) {
+                int firstId = FIRST_TAG_ID + lastClusterFix.clusterIndex * 4;
+                telemetry.addData("Goal Tags / Seen", "%d-%d / %d", firstId, firstId + 3, lastClusterFix.tagCount);
+                telemetry.addData("Goal Distance", lastClusterFix.distanceM > 0
+                    ? String.format("%.2f m", lastClusterFix.distanceM) : "no 3D data (enable full 3D)");
+            }
+        }
         if (autoAimEnabled) {
             String status;
             if (isTracking()) {
