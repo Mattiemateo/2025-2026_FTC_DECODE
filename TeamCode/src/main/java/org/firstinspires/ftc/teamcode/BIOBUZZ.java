@@ -7,82 +7,115 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.teamcode.pedro.Constants;
 
+/**
+ * BIOBUZZ TeleOp (gamepad 1).
+ *
+ * Left stick: drive/strafe | Right stick X: turn
+ * Left/Right bumper: turn turret | Triangle: toggle auto-aim
+ * Triggers: intake in/out | Cross/Circle: transfer forward/reverse | Square: flywheel
+ */
 @TeleOp(name = "BIOBUZZ", group = "BIOBUZZ")
 public class BIOBUZZ extends LinearOpMode {
+    public static double DRIVE_SCALE = 0.8;
+    public static double INTAKE_POWER = 0.6;
+    public static double TRANSFER_POWER = 0.9;
+
+    private DcMotor frontLeft, frontRight, backLeft, backRight, intake, transfer;
+    private FlywheelController flywheel;
+    private final TurretController turret = new TurretController();
+
     @Override
     public void runOpMode() {
-        DcMotor frontLeft = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.frontLeftName.get());
-        DcMotor frontRight = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.frontRightName.get());
-        DcMotor backLeft = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.backLeftName.get());
-        DcMotor backRight = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.backRightName.get());
-        DcMotor intake = hardwareMap.get(DcMotor.class, "intake");
-        DcMotor transfer = hardwareMap.get(DcMotor.class, "transfer");
-        DcMotorEx flywheel = hardwareMap.get(DcMotorEx.class, "flywheel");
-        DcMotor[] motors = {frontLeft, frontRight, backLeft, backRight, intake, transfer, flywheel};
-        TurretController turret = new TurretController();
+        initHardware();
+
+        // init() zeroes the turret encoder, so wherever the turret sits now is home (0).
+        turret.init(hardwareMap, telemetry);
+        turret.enableAutoAim(false);
+
+        telemetry.addLine("Turret home = current position. Center it before INIT.");
+        telemetry.addLine("Bumpers: turret | Triangle: auto-aim | Square: flywheel");
+        telemetry.update();
+        waitForStart();
+
+        boolean autoAim = false;
+        boolean lastTriangle = false;
+        ElapsedTime loopTimer = new ElapsedTime();
 
         try {
-            for (DcMotor motor : motors) {
-                motor.setPower(0);
-                motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-                motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-                motor.setDirection(DcMotor.Direction.FORWARD);
-            }
-            frontLeft.setDirection(Constants.drivetrainConfig.frontLeftDirection.get());
-            frontRight.setDirection(Constants.drivetrainConfig.frontRightDirection.get());
-            backLeft.setDirection(Constants.drivetrainConfig.backLeftDirection.get());
-            backRight.setDirection(Constants.drivetrainConfig.backRightDirection.get());
-            intake.setDirection(DcMotor.Direction.REVERSE);
-            transfer.setDirection(DcMotor.Direction.REVERSE);
-            flywheel.setDirection(DcMotor.Direction.REVERSE);
-            flywheel.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-            FlywheelController flywheelController = new FlywheelController(flywheel);
-            turret.init(hardwareMap, telemetry);
-
-            telemetry.addLine("Center turret BEFORE INIT; encoder zero is the starting position.");
-            telemetry.addLine("Sticks: drive | LB: slow | triggers: intake | A/B: transfer forward/reverse");
-            telemetry.addLine("D-pad left/right: turret | X: flywheel | RB: auto aim (hold) | Y: stop all");
-            telemetry.update();
-            waitForStart();
-            ElapsedTime loopTime = new ElapsedTime();
-
             while (opModeIsActive()) {
-                double dt = Math.min(loopTime.seconds(), 0.1);
-                loopTime.reset();
-                if (gamepad1.y) {
-                    for (DcMotor motor : motors) motor.setPower(0);
-                    turret.enableAutoAim(false);
-                    turret.stop();
-                    break;
-                }
+                double dt = Math.min(loopTimer.seconds(), 0.1);
+                loopTimer.reset();
 
-                double scale = gamepad1.left_bumper ? 0.25 : 0.8;
-                double[] powers = drivePowers(-gamepad1.left_stick_y,
-                        gamepad1.left_stick_x, gamepad1.right_stick_x, scale);
-                frontLeft.setPower(powers[0]);
-                frontRight.setPower(powers[1]);
-                backLeft.setPower(powers[2]);
-                backRight.setPower(powers[3]);
-                intake.setPower(0.6 * (gamepad1.right_trigger - gamepad1.left_trigger));
-                transfer.setPower(gamepad1.a == gamepad1.b ? 0 : gamepad1.a ? 0.9 : -0.9);
-                flywheelController.setTargetRPM(gamepad1.x ? FlywheelController.DEFAULT_RPM : 0);
+                drive();
 
-                turret.enableAutoAim(gamepad1.right_bumper);
-                if (!gamepad1.right_bumper) {
-                    double movement = (gamepad1.dpad_right ? 1 : 0) - (gamepad1.dpad_left ? 1 : 0);
-                    turret.jogManual(movement, dt);
+                intake.setPower(INTAKE_POWER * (gamepad1.right_trigger - gamepad1.left_trigger));
+                transfer.setPower(TRANSFER_POWER * buttonAxis(gamepad1.cross, gamepad1.circle));
+                flywheel.setTargetRPM(gamepad1.square ? FlywheelController.DEFAULT_RPM : 0);
+
+                if (gamepad1.triangle && !lastTriangle) autoAim = !autoAim;
+                lastTriangle = gamepad1.triangle;
+                turret.enableAutoAim(autoAim);
+                if (!autoAim) {
+                    turret.jogManual(buttonAxis(gamepad1.right_bumper, gamepad1.left_bumper), dt);
                 }
                 turret.update();
-                telemetry.addData("Flywheel target RPM", flywheelController.getTargetRPM());
-                telemetry.addData("Flywheel measured RPM", flywheelController.getCurrentRPM());
-                telemetry.addData("Transfer power", transfer.getPower());
+
+                telemetry.addData("Auto-aim", autoAim ? "ON" : "OFF");
+                telemetry.addData("Flywheel RPM (target/measured)", "%.0f / %.0f",
+                        flywheel.getTargetRPM(), flywheel.getCurrentRPM());
                 telemetry.update();
-                idle();
             }
         } finally {
-            for (DcMotor motor : motors) motor.setPower(0);
-            turret.stop();
+            stopAll();
         }
+    }
+
+    private void initHardware() {
+        frontLeft = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.frontLeftName.get());
+        frontRight = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.frontRightName.get());
+        backLeft = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.backLeftName.get());
+        backRight = hardwareMap.get(DcMotor.class, Constants.drivetrainConfig.backRightName.get());
+        intake = hardwareMap.get(DcMotor.class, "intake");
+        transfer = hardwareMap.get(DcMotor.class, "transfer");
+        DcMotorEx flywheelMotor = hardwareMap.get(DcMotorEx.class, "flywheel");
+
+        frontLeft.setDirection(Constants.drivetrainConfig.frontLeftDirection.get());
+        frontRight.setDirection(Constants.drivetrainConfig.frontRightDirection.get());
+        backLeft.setDirection(Constants.drivetrainConfig.backLeftDirection.get());
+        backRight.setDirection(Constants.drivetrainConfig.backRightDirection.get());
+        intake.setDirection(DcMotor.Direction.REVERSE);
+        transfer.setDirection(DcMotor.Direction.REVERSE);
+        flywheelMotor.setDirection(DcMotor.Direction.REVERSE);
+
+        for (DcMotor motor : new DcMotor[] {frontLeft, frontRight, backLeft, backRight, intake, transfer}) {
+            motor.setPower(0);
+            motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        }
+        flywheelMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
+        flywheel = new FlywheelController(flywheelMotor);
+    }
+
+    private void drive() {
+        double[] powers = drivePowers(-gamepad1.left_stick_y, gamepad1.left_stick_x,
+                gamepad1.right_stick_x, DRIVE_SCALE);
+        frontLeft.setPower(powers[0]);
+        frontRight.setPower(powers[1]);
+        backLeft.setPower(powers[2]);
+        backRight.setPower(powers[3]);
+    }
+
+    private void stopAll() {
+        for (DcMotor motor : new DcMotor[] {frontLeft, frontRight, backLeft, backRight, intake, transfer}) {
+            if (motor != null) motor.setPower(0);
+        }
+        if (flywheel != null) flywheel.setTargetRPM(0);
+        turret.stop();
+    }
+
+    /** +1 when only {@code positive} is held, -1 when only {@code negative} is held, else 0. */
+    static double buttonAxis(boolean positive, boolean negative) {
+        return (positive ? 1 : 0) - (negative ? 1 : 0);
     }
 
     static double[] drivePowers(double forward, double strafe, double turn, double scale) {
