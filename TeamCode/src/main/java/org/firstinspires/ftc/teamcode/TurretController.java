@@ -400,6 +400,8 @@ public class TurretController {
             turretMotor.getTargetPosition(), turretMotor.getCurrentPosition());
         telemetry.addData("Turret Power / Velocity", "%.2f / %.0f t/s",
             turretMotor.getPower(), turretMotor.getVelocity());
+        telemetry.addData("Turret Jog Dir / Run Mode", "%.0f / %s",
+            manualDirection, turretMotor.getMode());
         telemetry.addData("Robot Heading", "%.1f°", getRobotHeading());
         if (autoAimEnabled) {
             String status;

@@ -56,6 +56,7 @@ public class BIOBUZZ extends LinearOpMode {
                 turret.update();
 
                 telemetry.addData("Auto-aim", autoAim ? "ON" : "OFF");
+                telemetry.addData("Bumpers (L/R)", "%b / %b", gamepad1.left_bumper, gamepad1.right_bumper);
                 telemetry.addData("Flywheel RPM (target/measured)", "%.0f / %.0f",
                         flywheel.getTargetRPM(), flywheel.getCurrentRPM());
                 telemetry.update();
