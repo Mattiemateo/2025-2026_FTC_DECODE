@@ -70,7 +70,7 @@ public class BIOBUZZ extends LinearOpMode {
                 turret.enableAutoAim(gamepad1.right_bumper);
                 if (!gamepad1.right_bumper) {
                     double movement = (gamepad1.dpad_right ? 1 : 0) - (gamepad1.dpad_left ? 1 : 0);
-                    turret.setManualTargetAngle(turret.getManualTargetAngle() + movement * 45 * dt);
+                    turret.jogManual(movement, dt);
                 }
                 turret.update();
                 telemetry.addData("Flywheel target RPM", flywheelController.getTargetRPM());

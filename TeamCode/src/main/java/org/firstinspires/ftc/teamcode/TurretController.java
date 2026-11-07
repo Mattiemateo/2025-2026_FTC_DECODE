@@ -34,6 +34,10 @@ public class TurretController {
     // shortcut: provisional travel limits, measure safe travel before widening them.
     public static double MIN_ANGLE = -45.0, MAX_ANGLE = 45.0;
     public static double TURRET_MAX_POWER = 0.3;
+    public static double MANUAL_SPEED_DEG_PER_SEC = 45.0;
+    // How far the manual target may run ahead of the measured angle. Keeps the
+    // turret from coasting on after the d-pad is released.
+    public static double MANUAL_MAX_LEAD_DEG = 5.0;
     public static double SEARCH_POWER = 0.3; // Slower power for search movements
     public static double SEARCH_DWELL_TIME = 0.3; // Time to wait at each position (seconds)
     public static double TARGET_LOST_TIMEOUT = 2.0;
@@ -101,8 +105,7 @@ public class TurretController {
             telemetry.addData("Turret", "Not initialized, skipping update");
             return;
         }
-        limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
-        if (imu != null && limelight != null) {
+        if (imu != null) {
             try {
                 double robotYaw = getRobotHeading();
                 limelight.updateRobotOrientation(robotYaw);
@@ -301,6 +304,18 @@ public class TurretController {
         this.manualTargetAngle = clampAngle(angle);
     }
 
+    /** Moves the manual target at a fixed rate, never more than MANUAL_MAX_LEAD_DEG ahead of the turret. */
+    public void jogManual(double direction, double dt) {
+        if (direction == 0 || turretMotor == null) return;
+        manualTargetAngle = nextManualTarget(manualTargetAngle, getCurrentAngle(), direction, dt);
+    }
+
+    static double nextManualTarget(double target, double current, double direction, double dt) {
+        double next = target + direction * MANUAL_SPEED_DEG_PER_SEC * dt;
+        next = Math.max(current - MANUAL_MAX_LEAD_DEG, Math.min(current + MANUAL_MAX_LEAD_DEG, next));
+        return clampAngle(next);
+    }
+
     public double getManualTargetAngle() {
         return manualTargetAngle;
     }
@@ -375,6 +390,10 @@ public class TurretController {
             autoAimEnabled ? "Auto-Aim" : "Manual"
         );
         telemetry.addData("Turret Angle", "%.1f°", getCurrentAngle());
+        telemetry.addData("Turret Ticks (target/current)", "%d / %d",
+            turretMotor.getTargetPosition(), turretMotor.getCurrentPosition());
+        telemetry.addData("Turret Power / Velocity", "%.2f / %.0f t/s",
+            turretMotor.getPower(), turretMotor.getVelocity());
         telemetry.addData("Robot Heading", "%.1f°", getRobotHeading());
         if (autoAimEnabled) {
             String status;
