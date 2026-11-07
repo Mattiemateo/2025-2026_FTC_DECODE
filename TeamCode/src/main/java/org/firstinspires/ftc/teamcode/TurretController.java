@@ -8,7 +8,6 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.IMU;
-import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import java.util.List;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
@@ -27,15 +26,17 @@ public class TurretController {
     // --- Constants ---
     private static final double TICKS_PER_DEGREE =
         ((28 * 20 * 95.0) / 28.0) / 360.0;
-    public static double P = 15.0,
-        I = 0.0,
-        D = 0.0,
-        F = 0.0;
+    // Hub RUN_TO_POSITION gain (SDK default is 5). Higher = stiffer hold, but jerky/overshoot.
+    public static double POSITION_P = 5.0;
+    // Hub velocity loop used by the bumpers (RUN_USING_ENCODER) and inside RUN_TO_POSITION.
+    // Leave USE_CUSTOM_VELOCITY_PIDF false to keep the hub's defaults for the configured motor.
+    public static boolean USE_CUSTOM_VELOCITY_PIDF = false;
+    public static double VELOCITY_P = 10.0, VELOCITY_I = 3.0, VELOCITY_D = 0.0, VELOCITY_F = 0.0;
     // shortcut: provisional travel limits, measure safe travel before widening them.
     public static double MIN_ANGLE = -45.0, MAX_ANGLE = 45.0;
     public static double TURRET_MAX_POWER = 0.3;
     // Power used while a turret button is held; on release the turret holds where it stopped.
-    public static double MANUAL_POWER = 0.3;
+    public static double MANUAL_SPEED_DEG_PER_SEC = 60.0;
     public static double SEARCH_POWER = 0.3; // Slower power for search movements
     public static double SEARCH_DWELL_TIME = 0.3; // Time to wait at each position (seconds)
     public static double TARGET_LOST_TIMEOUT = 2.0;
@@ -79,10 +80,10 @@ public class TurretController {
             turretMotor = hardwareMap.get(DcMotorEx.class, "turret"); // port 0 Expansion hub
             turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-            turretMotor.setPIDFCoefficients(
-                DcMotor.RunMode.RUN_TO_POSITION,
-                new PIDFCoefficients(P, I, D, F)
-            );
+            turretMotor.setPositionPIDFCoefficients(POSITION_P);
+            if (USE_CUSTOM_VELOCITY_PIDF) {
+                turretMotor.setVelocityPIDFCoefficients(VELOCITY_P, VELOCITY_I, VELOCITY_D, VELOCITY_F);
+            }
 
             limelight = hardwareMap.get(Limelight3A.class, "limelight");
             limelight.pipelineSwitch(LIMELIGHT_PIPELINE);
@@ -274,34 +275,39 @@ public class TurretController {
                 int targetPositionTicks = (int) (targetAngle *
                     TICKS_PER_DEGREE);
                 turretMotor.setTargetPosition(targetPositionTicks);
-                turretMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+                setMode(DcMotor.RunMode.RUN_TO_POSITION);
                 turretMotor.setPower(SEARCH_POWER); // Use slower search power
             }
         }
     }
 
     private void updateManualControl() {
-        double power = manualPower(manualDirection, getCurrentAngle());
-        if (power != 0) {
-            turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-            turretMotor.setPower(power);
+        double degPerSec = manualVelocity(manualDirection, getCurrentAngle());
+        if (degPerSec != 0) {
+            setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+            turretMotor.setVelocity(degPerSec * TICKS_PER_DEGREE);
             manualTargetAngle = clampAngle(getCurrentAngle());
         } else {
             setTargetAngleInternal(manualTargetAngle);
         }
     }
 
-    /** Open-loop jog power, or 0 when not jogging or when the travel limit is reached. */
-    static double manualPower(double direction, double currentAngle) {
-        if (direction > 0 && currentAngle < MAX_ANGLE) return MANUAL_POWER;
-        if (direction < 0 && currentAngle > MIN_ANGLE) return -MANUAL_POWER;
+    /** Jog speed in deg/s, or 0 when not jogging or when the travel limit is reached. */
+    static double manualVelocity(double direction, double currentAngle) {
+        if (direction > 0 && currentAngle < MAX_ANGLE) return MANUAL_SPEED_DEG_PER_SEC;
+        if (direction < 0 && currentAngle > MIN_ANGLE) return -MANUAL_SPEED_DEG_PER_SEC;
         return 0;
+    }
+
+    /** Only send a mode change to the hub when the mode actually changes. */
+    private void setMode(DcMotor.RunMode mode) {
+        if (turretMotor.getMode() != mode) turretMotor.setMode(mode);
     }
 
     private void setTargetAngleInternal(double angle) {
         int targetPositionTicks = (int) (clampAngle(angle) * TICKS_PER_DEGREE);
         turretMotor.setTargetPosition(targetPositionTicks);
-        turretMotor.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        setMode(DcMotor.RunMode.RUN_TO_POSITION);
         turretMotor.setPower(TURRET_MAX_POWER);
     }
 

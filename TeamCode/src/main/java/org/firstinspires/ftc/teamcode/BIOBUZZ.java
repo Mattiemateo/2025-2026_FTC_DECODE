@@ -80,7 +80,7 @@ public class BIOBUZZ extends LinearOpMode {
         backLeft.setDirection(Constants.drivetrainConfig.backLeftDirection.get());
         backRight.setDirection(Constants.drivetrainConfig.backRightDirection.get());
         intake.setDirection(DcMotor.Direction.REVERSE);
-        transfer.setDirection(DcMotor.Direction.REVERSE);
+        transfer.setDirection(DcMotor.Direction.FORWARD);
         flywheelMotor.setDirection(DcMotor.Direction.REVERSE);
 
         for (DcMotor motor : new DcMotor[] {frontLeft, frontRight, backLeft, backRight, intake, transfer}) {

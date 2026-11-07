@@ -33,13 +33,13 @@ public class BIOBUZZTest {
 
     @Test
     public void manualTurretJogStopsAtTravelLimits() {
-        double power = TurretController.MANUAL_POWER;
-        assertEquals(power, TurretController.manualPower(1, 0), 0);
-        assertEquals(-power, TurretController.manualPower(-1, 0), 0);
-        assertEquals(0, TurretController.manualPower(0, 0), 0);
-        assertEquals(0, TurretController.manualPower(1, TurretController.MAX_ANGLE), 0);
-        assertEquals(0, TurretController.manualPower(-1, TurretController.MIN_ANGLE), 0);
-        assertEquals(-power, TurretController.manualPower(-1, TurretController.MAX_ANGLE), 0);
+        double speed = TurretController.MANUAL_SPEED_DEG_PER_SEC;
+        assertEquals(speed, TurretController.manualVelocity(1, 0), 0);
+        assertEquals(-speed, TurretController.manualVelocity(-1, 0), 0);
+        assertEquals(0, TurretController.manualVelocity(0, 0), 0);
+        assertEquals(0, TurretController.manualVelocity(1, TurretController.MAX_ANGLE), 0);
+        assertEquals(0, TurretController.manualVelocity(-1, TurretController.MIN_ANGLE), 0);
+        assertEquals(-speed, TurretController.manualVelocity(-1, TurretController.MAX_ANGLE), 0);
     }
 
     @Test(expected = IllegalArgumentException.class)
