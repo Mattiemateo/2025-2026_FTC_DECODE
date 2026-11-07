@@ -2,7 +2,7 @@
 
 Open this directory in Android Studio and deploy the **TeamCode** configuration. No new empty Android Studio project is needed. The BIOBUZZ setup lives on `biobuzz-season`; the complete previous project, including your pending changes, is preserved on `archive/decode-before-biobuzz` at `fb94e63`. Old team sources are also in `archive/2025-2026/teamcode`, outside the Android source set.
 
-Dependencies: FTC SDK **12.0.0**, Pedro Pathing **3.0.1**, AutoTune **1.0.1**, and Marrow **1.2.0**. Marrow is installed for future robot behaviors; this first manual TeleOp does not require a command framework. Sloth **0.3.2** and the matching Load plugin are installed for hot reloading, matching AutoTune’s runtime. The existing Limelight pipeline **8**, turret encoder gearing, and IMU orientation (logo FORWARD, USB UP) are retained.
+Dependencies: FTC SDK **12.0.0**, Pedro Pathing **3.0.1**, AutoTune **1.0.1**, and Marrow **1.2.0**. Marrow is installed for future robot behaviors; the TeleOp does not require a command framework. Sloth **0.3.2** and the matching Load plugin are installed for hot reloading, matching AutoTune's runtime.
 
 ## Hardware and first run
 
@@ -14,48 +14,84 @@ Use two REV hubs for the eight REV HD Hex motors. In the Robot Configuration, ch
 | Back left / back right drive | `leftBackDrive` / `rightBackDrive` |
 | Intake / transfer | `intake` / `transfer` |
 | Turret / flywheel | `turret` / `flywheel` |
-| IMU / Limelight | `imu` / `limelight` |
-| Forward / strafe pod encoder ports (provisional) | `leftBackDrive` / `rightFrontDrive` |
+| IMU / Limelight | `imu` / `limelight` (Limelight only needed when `AIM_SOURCE = LIMELIGHT`) |
+| Forward / strafe pod encoder ports | `rightBackDrive` / `rightFrontDrive` |
 
-The pod names refer to the configured motor ports their encoder cables occupy. Two passive GoBilda pods need no Pinpoint. Confirm the encoder-port names and actual hub orientation in `teamcode/pedro/Constants.java` and the Two Wheel Tuner inputs.
+The pod names refer to the configured motor ports their encoder cables occupy. Two passive goBILDA pods need no Pinpoint. The Control Hub is mounted **logo RIGHT, USB UP**; both `TurretController` and `pedro/Constants.java` use that orientation.
 
-**Manually center the turret before pressing INIT.** There is no homing sensor; encoder zero means its position at INIT. Confirm the provisional -45° to +45° travel limits in `TurretController.java` before moving it. Software limits depend on correct centering and encoder wiring. Test wheel directions with the robot lifted, then verify mechanism directions at low power. Intake, transfer, and flywheel keep your REVERSE settings. Drive directions use your updated Pedro drivetrain config.
+**Manually center the turret before pressing INIT.** There is no homing sensor; encoder zero is its position at INIT, and turret angle 0 means pointing straight ahead. Software travel limits are -45° to +45° (`MIN_ANGLE` / `MAX_ANGLE` in `TurretController.java`) and depend on correct centering and encoder wiring.
 
 ## One-gamepad TeleOp: BIOBUZZ
 
+### During INIT
+
 | Control | Action |
 | --- | --- |
-| Left stick / right stick X | Robot-relative translation / turn (80% maximum) |
-| Hold left bumper | 25% slow drive |
-| Right / left trigger | Intake forward / reverse (60% maximum) |
-| Hold A / B | Transfer forward / reverse (80%; both stops transfer) |
-| D-pad left / right | Adjust turret target (45°/second, limited travel) |
-| Hold X | Flywheel at 3000 RPM using its encoder; release to coast |
-| Hold right bumper | Existing Limelight auto aim and bounded target search |
-| Y | Stop all motors and end TeleOp |
+| Circle | Red alliance |
+| Cross | Blue alliance |
 
-All motors stop in cleanup, including when initialization or the active loop fails. `FlywheelController` restores last season’s 52 ticks/revolution, PIDF 9 / 0.5 / 0 / 15, and 3000 RPM target, confirmed for the unchanged gearing. Motor direction stays REVERSE as in your current TeleOp. Target and measured RPM appear in telemetry. The previous distance lookup table remains archived; this manual TeleOp uses a fixed target.
+The alliance sets the odometry start spot and which HIVE auto-aim targets. Without a choice, auto-aim stays off. Telemetry shows the current choice and "Odometry OFF" with the reason if the localizer cannot start.
 
-The desktop driver station in `~/code/ftcdriverstation` maps Space to a forward intake toggle and Shift+Space to a reverse toggle. Press the same combination again to stop, or the other combination to change direction. P holds flywheel on, L holds transfer on, and G/H move the turret. Intake toggling is in the keyboard driver station; physical gamepad triggers remain hold-to-run.
+### During the match
+
+| Control | Action |
+| --- | --- |
+| Left stick / right stick X | Robot-relative drive and strafe / turn (80% maximum) |
+| Right / left trigger | Intake in / out (60% maximum) |
+| Hold Cross / Circle | Transfer forward / reverse (90%) |
+| Hold Square | Flywheel at 2000 RPM using its encoder; release to coast |
+| Hold Right / Left bumper | Turn turret (60°/s, encoder speed control); release to hold position |
+| Triangle | Toggle auto-aim on/off (starts off; bumpers are ignored while it is on) |
+| D-pad up / down | The FAR / AUDIENCE cell of our HIVE is tipped up (auto-aim target) |
+| Options | Robot is back at its start spot: re-zero odometry there |
+
+Stopping the OpMode on the Driver Station stops all motors. There is no slow-drive mode or stop-all button.
+
+### Auto-aim (odometry)
+
+Auto-aim tracks the robot pose with Pedro's two-pod + IMU localizer and points the turret at the upward CELL of our HIVE, counter-rotating against robot turns. Field geometry lives in `FieldAim.java` (BIOBUZZ Competition Manual TU08, section 9): origin at the field centre, +X toward the blue wall, +Y away from the audience. HIVEs sit 12.75 in. either side of centre; the upward CELL is about 13.4 in. toward the far or audience wall (`CELL_Y`, estimated from the manual drawings).
+
+- **Start spot:** back of the robot against our own alliance wall, centred on the field's middle line, facing the HIVE. Change `ROBOT_HALF_LENGTH`, `START_Y` or `TURRET_FORWARD_OFFSET` in `FieldAim.java` if the robot differs.
+- **Check:** at the start spot **Robot Pose** should read about x -63, y 0, h 0 (red) or x 63, y 0, h 180 (blue). Drive one tile forward and x should change by about 24.
+- **Turret direction:** set `TURRET_POSITIVE_IS_CLOCKWISE` to match which way the right bumper turns the turret (seen from above).
+- Odometry drifts; re-zero with Options at the start spot. The turret only covers ±45°, so face roughly toward the HIVE.
+
+The Limelight auto-aim (tag clusters 30–45, alliance filter, gyro stabilisation) is still in `TurretController` behind `AIM_SOURCE = LIMELIGHT`, using pipeline `LIMELIGHT_PIPELINE` (currently 1). It needs an AprilTag pipeline with family 36h11, marker size 82.55 mm and full 3D enabled.
+
+### Tuning knobs
+
+| Setting | File | Purpose |
+| --- | --- | --- |
+| `POSITION_P` (5) | `TurretController` | Turret hold stiffness; raise if floppy, lower if it shakes |
+| `MANUAL_SPEED_DEG_PER_SEC` (60) | `TurretController` | Bumper turret speed |
+| `AIM_MAX_POWER` (0.6), `GYRO_LEAD_SEC` (0.05) | `TurretController` | Auto-aim speed and turn-rate lead |
+| `DEFAULT_RPM` (2000) | `FlywheelController` | Flywheel speed |
+| `DRIVE_SCALE`, `INTAKE_POWER`, `TRANSFER_POWER` | `BIOBUZZ` | Drive and mechanism power |
+
+The desktop driver station in `~/code/ftcdriverstation` maps Space to a forward intake toggle and Shift+Space to a reverse toggle. P holds flywheel on and L holds transfer on. Its G/H turret keys were mapped to the old D-pad turret control; check they now send the bumpers.
+
+## Other OpModes
+
+- **BIOBUZZ Pod Check:** shows raw ticks of both odometry pods. A goBILDA 4-Bar pod reads about 12,100 ticks per tile (24 in.). Use it before re-tuning.
 
 ## Sloth Load
 
 Sync Gradle in Android Studio. **Sloth Load** is restored as a shared run configuration in `.run/Sloth Load.run.xml`, running `:TeamCode:deploySloth`. The plugin supplies that task and `removeSlothRemote`.
 
-Install **TeamCode normally once** after this dependency/controller update. Then use **Sloth Load** for Java changes under TeamCode. Full installs are required for dependency, resource, or SDK changes; clear old loaded code with `:TeamCode:removeSlothRemote` before a normal install. Android Studio’s TeamCode configuration includes that cleanup before its build/install step.
+Install **TeamCode normally once** after this dependency/controller update. Then use **Sloth Load** for Java changes under TeamCode. Full installs are required for dependency, resource, or SDK changes; clear old loaded code with `:TeamCode:removeSlothRemote` before a normal install. Android Studio's TeamCode configuration includes that cleanup before its build/install step.
 
 [Official Sloth installation and hot reload instructions](https://github.com/Dairy-Foundation/Sloth)
 
 ## Pedro AutoTune
 
-Deploy TeamCode, connect your laptop to the robot's Wi-Fi, and open **http://192.168.43.1:10158** (use the robot's actual IP if different). AutoTune starts with the Robot Controller app; its procedures are registered in `teamcode/pedro/Tuning.java`.
+AutoTune runs from a web page, not from the Driver Station OpMode list. Install TeamCode normally (not only Sloth Load), restart the robot, connect your laptop to the robot's Wi-Fi, and open **http://192.168.43.1:10158** (use the robot's actual IP if different). Its procedures are registered in `teamcode/pedro/Tuning.java`; each step runs on the robot and you press Stop on the Driver Station when the page says so.
 
 1. Run **Mecanum Tuner**, then paste the generated drivetrain configuration into `Constants.java`.
-2. Run **Two Wheel Tuner** with your two GoBilda pods and IMU; paste its generated localizer configuration into `Constants.java`.
+2. Run **Two Wheel Tuner** with your two goBILDA pods and IMU (set Logo **RIGHT**, USB UP); paste its generated localizer configuration into `Constants.java` (needs `import com.pedropathing.revhub.localizers.Encoder;`).
 3. Run **Foresight Tuner**, then paste its generated configuration into `Constants.java`.
 4. Run **Tests** for localization and path following.
 
-The localizer measurements and Foresight coefficients remain unset until measured. Attempting to construct them before tuning produces Pedro's required-setting error, rather than silently using last season's calibration. TeleOp driving and turret aiming do not construct the Pedro localizer. AutoTune moves the robot during its procedures; follow its prompts and allow the requested travel space.
+**Status:** the Two Wheel Tuner output is in `Constants.java`. The forward pod (`forwardTicksToInches` 0.00201) matches the ~0.00198 expected for a 4-Bar pod; the strafe pod (0.00357) is about 1.8x that, so check one tile sideways with **BIOBUZZ Pod Check** and re-tune if it reads wrong. Mecanum and Foresight tuning are not done yet. AutoTune moves the robot during its procedures; follow its prompts and allow the requested travel space.
 
 [Pedro installation and tuning](https://pedropathing.com/docs/pathing/installation) · [Pedro 3.0.1 release](https://github.com/Pedro-Pathing/PedroPathing/releases/tag/v3.0.1) · [Marrow documentation](https://marrow.skeletonarmyftc.com/getting-started/quickstart) · [FTC SDK 12.0 release](https://github.com/FIRST-Tech-Challenge/FtcRobotController/releases/tag/v12.0)
 
@@ -67,7 +103,7 @@ Use JDK 17 or newer (this setup was built with JDK 21), Android SDK 36, and Andr
 ./gradlew :TeamCode:assembleDebug :TeamCode:testDebugUnitTest :TeamCode:lintDebug
 ```
 
-Validation: the debug APK builds, all three unit tests pass, and lint completes with zero reported errors. The unit tests cover mecanum output directions/power bounds and turret target limits. The SDK/AutoTune dependencies still emit native-library alignment and Kotlin metadata compatibility warnings with the official SDK build tools; hardware execution of AutoTune is not yet verified. The upstream tuning sources also produce locale warnings. Build tool versions remain those supplied by FTC SDK 12.0. On-robot checks, odometry/algorithm tuning, turret limits, and flywheel speed remain to be performed on the actual robot.
+The unit tests cover mecanum output directions/power bounds, turret limits and jogging, the Limelight tag-cluster maths, gyro counter-rotation, and the odometry aim geometry. The SDK/AutoTune dependencies still emit native-library alignment and Kotlin metadata compatibility warnings with the official SDK build tools. On-robot checks of auto-aim, odometry tuning and flywheel speed remain to be done on the actual robot.
 
 ---
 
