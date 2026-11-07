@@ -32,21 +32,14 @@ public class BIOBUZZTest {
     }
 
     @Test
-    public void manualTurretTargetNeverRunsFarAheadOfTheTurret() {
-        double lead = TurretController.MANUAL_MAX_LEAD_DEG;
-        // Holding the d-pad while the turret lags must not wind the target up.
-        double target = 0;
-        for (int i = 0; i < 50; i++) target = TurretController.nextManualTarget(target, 0, 1, 0.1);
-        assertEquals(lead, target, 1e-9);
-        target = 0;
-        for (int i = 0; i < 50; i++) target = TurretController.nextManualTarget(target, 0, -1, 0.1);
-        assertEquals(-lead, target, 1e-9);
-        // Normal tracking moves at the configured rate.
-        assertEquals(TurretController.MANUAL_SPEED_DEG_PER_SEC * 0.02,
-                TurretController.nextManualTarget(0, 0, 1, 0.02), 1e-9);
-        // Travel limits still win.
-        assertEquals(TurretController.MAX_ANGLE,
-                TurretController.nextManualTarget(TurretController.MAX_ANGLE, TurretController.MAX_ANGLE, 1, 0.1), 1e-9);
+    public void manualTurretJogStopsAtTravelLimits() {
+        double power = TurretController.MANUAL_POWER;
+        assertEquals(power, TurretController.manualPower(1, 0), 0);
+        assertEquals(-power, TurretController.manualPower(-1, 0), 0);
+        assertEquals(0, TurretController.manualPower(0, 0), 0);
+        assertEquals(0, TurretController.manualPower(1, TurretController.MAX_ANGLE), 0);
+        assertEquals(0, TurretController.manualPower(-1, TurretController.MIN_ANGLE), 0);
+        assertEquals(-power, TurretController.manualPower(-1, TurretController.MAX_ANGLE), 0);
     }
 
     @Test(expected = IllegalArgumentException.class)

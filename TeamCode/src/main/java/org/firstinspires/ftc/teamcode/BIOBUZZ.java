@@ -4,7 +4,6 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.teamcode.pedro.Constants;
 
 /**
@@ -39,13 +38,9 @@ public class BIOBUZZ extends LinearOpMode {
 
         boolean autoAim = false;
         boolean lastTriangle = false;
-        ElapsedTime loopTimer = new ElapsedTime();
 
         try {
             while (opModeIsActive()) {
-                double dt = Math.min(loopTimer.seconds(), 0.1);
-                loopTimer.reset();
-
                 drive();
 
                 intake.setPower(INTAKE_POWER * (gamepad1.right_trigger - gamepad1.left_trigger));
@@ -56,7 +51,7 @@ public class BIOBUZZ extends LinearOpMode {
                 lastTriangle = gamepad1.triangle;
                 turret.enableAutoAim(autoAim);
                 if (!autoAim) {
-                    turret.jogManual(buttonAxis(gamepad1.right_bumper, gamepad1.left_bumper), dt);
+                    turret.jogManual(buttonAxis(gamepad1.right_bumper, gamepad1.left_bumper));
                 }
                 turret.update();
 

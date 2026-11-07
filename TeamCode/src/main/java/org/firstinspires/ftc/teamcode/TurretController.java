@@ -34,10 +34,8 @@ public class TurretController {
     // shortcut: provisional travel limits, measure safe travel before widening them.
     public static double MIN_ANGLE = -45.0, MAX_ANGLE = 45.0;
     public static double TURRET_MAX_POWER = 0.3;
-    public static double MANUAL_SPEED_DEG_PER_SEC = 45.0;
-    // How far the manual target may run ahead of the measured angle. Keeps the
-    // turret from coasting on after the d-pad is released.
-    public static double MANUAL_MAX_LEAD_DEG = 5.0;
+    // Power used while a turret button is held; on release the turret holds where it stopped.
+    public static double MANUAL_POWER = 0.3;
     public static double SEARCH_POWER = 0.3; // Slower power for search movements
     public static double SEARCH_DWELL_TIME = 0.3; // Time to wait at each position (seconds)
     public static double TARGET_LOST_TIMEOUT = 2.0;
@@ -50,6 +48,7 @@ public class TurretController {
     // --- State ---
     private boolean autoAimEnabled = false;
     private double manualTargetAngle = 0.0;
+    private double manualDirection = 0.0;
     private double lastKnownTargetAngleField = 0.0;
     private double lastKnownDistance = 0.0;
     private boolean targetWasVisible = false;
@@ -282,7 +281,21 @@ public class TurretController {
     }
 
     private void updateManualControl() {
-        setTargetAngleInternal(manualTargetAngle);
+        double power = manualPower(manualDirection, getCurrentAngle());
+        if (power != 0) {
+            turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            turretMotor.setPower(power);
+            manualTargetAngle = clampAngle(getCurrentAngle());
+        } else {
+            setTargetAngleInternal(manualTargetAngle);
+        }
+    }
+
+    /** Open-loop jog power, or 0 when not jogging or when the travel limit is reached. */
+    static double manualPower(double direction, double currentAngle) {
+        if (direction > 0 && currentAngle < MAX_ANGLE) return MANUAL_POWER;
+        if (direction < 0 && currentAngle > MIN_ANGLE) return -MANUAL_POWER;
+        return 0;
     }
 
     private void setTargetAngleInternal(double angle) {
@@ -304,16 +317,9 @@ public class TurretController {
         this.manualTargetAngle = clampAngle(angle);
     }
 
-    /** Moves the manual target at a fixed rate, never more than MANUAL_MAX_LEAD_DEG ahead of the turret. */
-    public void jogManual(double direction, double dt) {
-        if (direction == 0 || turretMotor == null) return;
-        manualTargetAngle = nextManualTarget(manualTargetAngle, getCurrentAngle(), direction, dt);
-    }
-
-    static double nextManualTarget(double target, double current, double direction, double dt) {
-        double next = target + direction * MANUAL_SPEED_DEG_PER_SEC * dt;
-        next = Math.max(current - MANUAL_MAX_LEAD_DEG, Math.min(current + MANUAL_MAX_LEAD_DEG, next));
-        return clampAngle(next);
+    /** +1 turns the turret toward MAX_ANGLE, -1 toward MIN_ANGLE, 0 holds position. Applied in update(). */
+    public void jogManual(double direction) {
+        manualDirection = Math.signum(direction);
     }
 
     public double getManualTargetAngle() {
