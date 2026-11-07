@@ -64,7 +64,7 @@ public class BIOBUZZ extends LinearOpMode {
                 backLeft.setPower(powers[2]);
                 backRight.setPower(powers[3]);
                 intake.setPower(0.6 * (gamepad1.right_trigger - gamepad1.left_trigger));
-                transfer.setPower(gamepad1.a == gamepad1.b ? 0 : gamepad1.a ? 0.8 : -0.8);
+                transfer.setPower(gamepad1.a == gamepad1.b ? 0 : gamepad1.a ? 0.9 : -0.9);
                 flywheelController.setTargetRPM(gamepad1.x ? FlywheelController.DEFAULT_RPM : 0);
 
                 turret.enableAutoAim(gamepad1.right_bumper);

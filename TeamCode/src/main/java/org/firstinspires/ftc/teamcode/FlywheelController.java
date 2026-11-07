@@ -7,7 +7,7 @@ import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 public class FlywheelController {
     // Last season's calibration, confirmed for the unchanged flywheel gearing.
     public static double TICKS_PER_REV = 52.0;
-    public static double DEFAULT_RPM = 3000.0;
+    public static double DEFAULT_RPM = 2000.0;
     public static double MAX_RPM = 6000.0;
     public static double FLYWHEEL_P = 9.0;
     public static double FLYWHEEL_I = 0.5;

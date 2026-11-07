@@ -66,7 +66,7 @@ public class TurretController {
             // This is for a Control Hub that is mounted horizontally with the logo facing up and the USB ports facing forward.
             IMU.Parameters parameters = new IMU.Parameters(
                 new RevHubOrientationOnRobot(
-                    RevHubOrientationOnRobot.LogoFacingDirection.FORWARD,
+                    RevHubOrientationOnRobot.LogoFacingDirection.RIGHT,
                     RevHubOrientationOnRobot.UsbFacingDirection.UP
                 )
             );
