@@ -188,11 +188,12 @@ public class BIOBUZZTest {
     public void autoFireWaitsForEveryCheck() {
         double[] row = ShotTable.ROWS[0];
         double d = row[0], rpm = row[1];
-        assertNull(BIOBUZZ.shotBlocker(0.5, rpm, rpm, 0.05, d));
-        assertNotNull(BIOBUZZ.shotBlocker(5.0, rpm, rpm, 0.05, d)); // not aimed
-        assertNotNull(BIOBUZZ.shotBlocker(0.5, rpm * 0.9, rpm, 0.05, d)); // not up to speed
-        assertNotNull(BIOBUZZ.shotBlocker(0.5, rpm, rpm, 1.0, d)); // goal not seen recently
-        assertNotNull(BIOBUZZ.shotBlocker(0.5, rpm, rpm, 0.05, d + 100)); // too far
+        assertNull(BIOBUZZ.shotBlocker(false, 0.5, rpm, rpm, 0.05, d));
+        assertNotNull(BIOBUZZ.shotBlocker(true, 0.5, rpm, rpm, 0.05, d)); // goal in the blind spot
+        assertNotNull(BIOBUZZ.shotBlocker(false, 5.0, rpm, rpm, 0.05, d)); // not aimed
+        assertNotNull(BIOBUZZ.shotBlocker(false, 0.5, rpm * 0.9, rpm, 0.05, d)); // not up to speed
+        assertNotNull(BIOBUZZ.shotBlocker(false, 0.5, rpm, rpm, 1.0, d)); // goal not seen recently
+        assertNotNull(BIOBUZZ.shotBlocker(false, 0.5, rpm, rpm, 0.05, d + 100)); // too far
     }
 
     @Test

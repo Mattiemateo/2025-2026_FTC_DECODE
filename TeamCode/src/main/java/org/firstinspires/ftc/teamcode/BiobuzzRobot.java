@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.VoltageSensor;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 import org.firstinspires.ftc.teamcode.pedro.Constants;
 
@@ -18,6 +19,7 @@ public class BiobuzzRobot {
 
     public DcMotor frontLeft, frontRight, backLeft, backRight, intake, transfer;
     public FlywheelController flywheel;
+    private HardwareMap hardwareMap;
     public final TurretController turret = new TurretController();
     public Localizer localizer;
     public String odometryError;
@@ -27,6 +29,7 @@ public class BiobuzzRobot {
     private double vForward, vLeft;
 
     public void init(HardwareMap hardwareMap, Telemetry telemetry) {
+        this.hardwareMap = hardwareMap;
         // init() zeroes the turret encoder, so wherever the turret sits now is home (0).
         // It also sets up the IMU, so it runs before the odometry (which reads that IMU).
         turret.init(hardwareMap, telemetry);
@@ -63,6 +66,16 @@ public class BiobuzzRobot {
         }
         flywheelMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         flywheel = new FlywheelController(flywheelMotor);
+    }
+
+    /** Lowest battery voltage reported by the hubs, or 0 if none. */
+    public double batteryVoltage() {
+        double lowest = 0;
+        for (VoltageSensor sensor : hardwareMap.voltageSensor) {
+            double v = sensor.getVoltage();
+            if (v > 0 && (lowest == 0 || v < lowest)) lowest = v;
+        }
+        return lowest;
     }
 
     /** During INIT: Circle = RED, Cross = BLUE. */

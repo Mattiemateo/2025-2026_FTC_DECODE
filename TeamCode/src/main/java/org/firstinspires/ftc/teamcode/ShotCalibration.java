@@ -32,6 +32,7 @@ public class ShotCalibration extends LinearOpMode {
         }
 
         double rpm = FlywheelController.DEFAULT_RPM;
+        double measuredRpm = 0; // smoothed: the table must hold the speed the flywheel really ran at
         boolean autoAim = true;
         boolean lastUp = false, lastDown = false, lastTriangle = false;
 
@@ -54,12 +55,14 @@ public class ShotCalibration extends LinearOpMode {
                 robot.flywheel.setTargetRPM(rpm);
                 robot.transfer.setPower(BiobuzzRobot.TRANSFER_POWER * BIOBUZZ.buttonAxis(gamepad1.square, gamepad1.circle));
 
+                measuredRpm += 0.1 * (robot.flywheel.getCurrentRPM() - measuredRpm);
                 double distance = robot.turret.getGoalDistanceIn();
                 telemetry.addData("Horizontal distance", distance > 0 ? String.format("%.1f in", distance) : "no goal / no 3D");
-                telemetry.addData("RPM (target / measured)", "%.0f / %.0f", rpm, robot.flywheel.getCurrentRPM());
+                telemetry.addData("RPM (target / measured avg)", "%.0f / %.0f", rpm, measuredRpm);
+                telemetry.addData("Battery", "%.1f V", robot.batteryVoltage());
                 telemetry.addData("Aim error", "%.1f°", robot.turret.getAimErrorDeg());
-                telemetry.addData("Table row", "{%.1f, %.0f, %.2f},", distance, rpm, ShotTable.flightTime(distance));
-                telemetry.addLine("Copy the row into ShotTable.ROWS when shots go in (flight time: measure on video).");
+                telemetry.addData("Table row", "{%.1f, %.0f, %.2f},", distance, measuredRpm, ShotTable.flightTime(distance));
+                telemetry.addLine("Copy the row (measured RPM) into ShotTable.ROWS when shots go in. Flight time: measure on video.");
                 telemetry.update();
             }
         } finally {

@@ -39,9 +39,9 @@ The alliance sets the odometry start spot and which HIVE auto-aim targets. Witho
 | Left stick / right stick X | Robot-relative drive and strafe / turn (80% maximum) |
 | Right / left trigger | Intake in / out (60% maximum) |
 | Hold Cross / Circle | Transfer forward / reverse (90%) |
-| Hold Square, auto-aim ON | **Shoot:** the transfer feeds only while the turret is on target (2°), the flywheel is within 3% of the shot-table RPM, the goal was seen in the last 0.2 s and the distance is inside the shot table. Telemetry `Shot` shows READY or what it waits for. |
+| Hold Square, auto-aim ON | **Shoot:** the transfer feeds only while the turret is on target (2°), the **measured** flywheel speed is within 3% of the shot-table RPM (with a low battery the real speed can lag the target), the goal was seen in the last 0.2 s, the distance is inside the shot table, and the goal is not behind the turret's blind spot. The aim check follows the turret's real path, so it does not fire while the turret swings the long way round. Telemetry `Shot` shows READY or what it waits for. |
 | Hold Square, auto-aim OFF | Flywheel at `DEFAULT_RPM` (2000); release to coast |
-| Hold Right / Left bumper | Turn turret (60°/s, encoder speed control); release to hold position |
+| Hold Right / Left bumper | Turn turret (80°/s, encoder speed control); release to hold position |
 | Triangle | Toggle auto-aim on/off (starts off; bumpers are ignored while it is on). While on, the flywheel pre-spins to the RPM for the current distance. |
 | D-pad up / down | The FAR / AUDIENCE cell of our HIVE is tipped up (auto-aim target) |
 | Options | Robot is back at its start spot: re-zero odometry there |
@@ -53,7 +53,7 @@ Stopping the OpMode on the Driver Station stops all motors. There is no slow-dri
 The robot drives back and forth past the HIVE and turns around at each end, so the turret aims sideways on either side. Auto-aim (Limelight, on the turret) points at the goal cluster; the flywheel speed comes from `ShotTable.java` (horizontal distance → RPM and ball flight time). While the robot moves, the shot leads: the turret aims at the goal shifted back by robot velocity × flight time, and the RPM uses that shifted distance. Robot velocity comes from odometry, so the lead is only right when the pods are calibrated (the strafe pod still is not; forward motion, the usual drive-by direction, is).
 
 1. **Check the camera tilt.** `CAMERA_PITCH_DEG` (35° above level, i.e. 55° from vertical) and `CAMERA_HEIGHT_IN` (25 cm) in `TurretController` turn the Limelight's 3D tag position into horizontal distance and direction. With the goal in view, `Goal Distance` also shows the goal height: it should read about 50–53 in at every distance. If it drifts with distance, adjust `CAMERA_PITCH_DEG`.
-2. **Build the shot table** with **BIOBUZZ Shot Calibration**: stand still at 4–6 distances (side-on to the HIVE), let auto-aim lock on, adjust RPM with D-pad up/down (50 per press), shoot with Square (Circle reverses the transfer). When shots go in, copy the `Table row` line into `ShotTable.ROWS`, sorted by distance. Measure flight time from a slow-motion video of a shot. The table starts with one row: 52 in., 2000 RPM (back to the wall, facing the goal).
+2. **Build the shot table** with **BIOBUZZ Shot Calibration**: stand still at 4–6 distances (side-on to the HIVE), let auto-aim lock on, adjust RPM with D-pad up/down (50 per press), shoot with Square (Circle reverses the transfer). When shots go in, copy the `Table row` line into `ShotTable.ROWS`, sorted by distance; it holds the **measured** (averaged) RPM, not the target, because battery level changes the real speed. Measure flight time from a slow-motion video of a shot. Current table (mock CELL, tags 123 cm high): 42 in. 1850, 58 in. 2000, 70 in. 2150, 80 in. 2300 RPM. Below about 45 in. the camera loses the tags at its 35° tilt.
 3. **Stand still and hold Square** in BIOBUZZ at a few distances; check the `Shot` line.
 4. **Drive-bys**, slow then faster. If moving shots land behind the goal raise `LEAD_GAIN` (`TurretController`), if ahead lower it; or fix the flight times per row.
 
@@ -73,8 +73,8 @@ Auto-aim tracks the robot pose with Pedro's two-pod + IMU localizer and points t
 | Setting | File | Purpose |
 | --- | --- | --- |
 | `POSITION_P` (5) | `TurretController` | Turret hold stiffness; raise if floppy, lower if it shakes |
-| `MANUAL_SPEED_DEG_PER_SEC` (60) | `TurretController` | Bumper turret speed |
-| `AIM_MAX_POWER` (0.6), `GYRO_LEAD_SEC` (0.05) | `TurretController` | Auto-aim speed and turn-rate lead |
+| `MANUAL_SPEED_DEG_PER_SEC` (80) | `TurretController` | Bumper turret speed |
+| `AIM_MAX_POWER` (0.8), `GYRO_LEAD_SEC` (0.05) | `TurretController` | Auto-aim speed and turn-rate lead |
 | `DEFAULT_RPM` (2000) | `FlywheelController` | Flywheel speed |
 | `DRIVE_SCALE` / `INTAKE_POWER`, `TRANSFER_POWER` | `BIOBUZZ` / `BiobuzzRobot` | Drive and mechanism power |
 | `AIM_TOLERANCE_DEG` (2), `RPM_TOLERANCE` (0.03), `MAX_TARGET_AGE_SEC` (0.2) | `BIOBUZZ` | Auto-fire checks |

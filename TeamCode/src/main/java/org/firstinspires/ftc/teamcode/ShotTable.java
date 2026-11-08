@@ -11,11 +11,14 @@ package org.firstinspires.ftc.teamcode;
  * tune with drive-bys (or use TurretController.LEAD_GAIN for an overall correction).
  */
 public final class ShotTable {
-    // {horizontal distance (in), flywheel RPM, flight time (s)}
-    // First row: robot's back against the wall facing the goal, 3 hits in a row (2026-11-07).
-    // The flight time is a guess until measured.
+    // {horizontal distance (in), flywheel RPM (measured), flight time (s)}
+    // Measured on the mock CELL (tags 123 cm high), 2026-11-08. Below ~45 in the camera loses
+    // the tags at its 35 deg tilt. Flight times are guesses until measured on video.
     public static double[][] ROWS = {
-        {52.0, 2000.0, 0.45},
+        {42.0, 1850.0, 0.40},
+        {58.0, 2000.0, 0.45},
+        {70.0, 2150.0, 0.50},
+        {80.0, 2300.0, 0.55},
     };
     // How far beyond the first/last row auto-fire is still allowed.
     public static double INRANGE_MARGIN_IN = 6.0;

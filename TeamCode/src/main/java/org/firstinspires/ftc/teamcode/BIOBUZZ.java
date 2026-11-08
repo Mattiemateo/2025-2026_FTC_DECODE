@@ -75,8 +75,8 @@ public class BIOBUZZ extends LinearOpMode {
                     if (distance > 0) spinRpm = ShotTable.rpm(distance);
                     robot.flywheel.setTargetRPM(spinRpm);
 
-                    String blocker = shotBlocker(robot.turret.getAimErrorDeg(), robot.flywheel.getCurrentRPM(),
-                            spinRpm, robot.turret.secondsSinceGoalSeen(), distance);
+                    String blocker = shotBlocker(robot.turret.isTargetInBlindSpot(), robot.turret.getAimErrorDeg(),
+                            robot.flywheel.getCurrentRPM(), spinRpm, robot.turret.secondsSinceGoalSeen(), distance);
                     boolean fire = gamepad1.square && blocker == null;
                     robot.transfer.setPower(gamepad1.square ? (fire ? BiobuzzRobot.TRANSFER_POWER : 0) : manualTransfer);
                     telemetry.addData("Shot", blocker == null ? "READY" : "WAIT: " + blocker);
@@ -88,6 +88,7 @@ public class BIOBUZZ extends LinearOpMode {
                 telemetry.addData("Auto-aim", autoAim ? "ON" : "OFF");
                 telemetry.addData("Flywheel RPM (target/measured)", "%.0f / %.0f",
                         robot.flywheel.getTargetRPM(), robot.flywheel.getCurrentRPM());
+                telemetry.addData("Battery", "%.1f V", robot.batteryVoltage());
                 telemetry.update();
             }
         } finally {
@@ -95,9 +96,13 @@ public class BIOBUZZ extends LinearOpMode {
         }
     }
 
-    /** Why the robot may not shoot right now, or null when every check passes. */
-    static String shotBlocker(double aimErrorDeg, double rpm, double targetRpm, double targetAgeSec,
-                              double distanceIn) {
+    /**
+     * Why the robot may not shoot right now, or null when every check passes. rpm is the measured
+     * flywheel speed: with a low battery it can lag the target, and only the real speed counts.
+     */
+    static String shotBlocker(boolean blindSpot, double aimErrorDeg, double rpm, double targetRpm,
+                              double targetAgeSec, double distanceIn) {
+        if (blindSpot) return "goal behind the turret's blind spot";
         if (targetAgeSec > MAX_TARGET_AGE_SEC) return "goal not seen";
         if (!ShotTable.inRange(distanceIn)) return String.format("distance %.0f in outside shot table", distanceIn);
         if (aimErrorDeg > AIM_TOLERANCE_DEG) return String.format("aiming (%.1f°)", aimErrorDeg);

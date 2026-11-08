@@ -37,7 +37,7 @@ public class TurretController {
     public static double MIN_ANGLE = -170.0, MAX_ANGLE = 110.0;
     public static double TURRET_MAX_POWER = 0.3;
     // Power used while a turret button is held; on release the turret holds where it stopped.
-    public static double MANUAL_SPEED_DEG_PER_SEC = 60.0;
+    public static double MANUAL_SPEED_DEG_PER_SEC = 80.0;
     public static double SEARCH_POWER = 0.3; // Slower power for search movements
     public static double SEARCH_DWELL_TIME = 0.3; // Time to wait at each position (seconds)
     public static double TARGET_LOST_TIMEOUT = 2.0;
@@ -64,7 +64,7 @@ public class TurretController {
     public static boolean TURRET_POSITIVE_IS_CLOCKWISE = true;
     public static double VISION_FILTER = 0.5; // 0..1, how much each camera frame corrects the aim (lower = smoother)
     public static double GYRO_LEAD_SEC = 0.05; // aim ahead by turn rate x this, covers motor lag (0 = off)
-    public static double AIM_MAX_POWER = 0.6; // auto-aim needs to be faster than manual to keep up with spins
+    public static double AIM_MAX_POWER = 0.8; // auto-aim needs to be faster than manual to keep up with spins
     public static boolean IMU_SEARCH_ENABLED = true;
 
     // --- Shooting while moving ---
@@ -91,6 +91,8 @@ public class TurretController {
     private double goalDistanceIn = 0.0; // horizontal, from the last fix with 3D data
     private double shotDistanceIn = 0.0; // horizontal distance to the lead-compensated aim point
     private double leadOffsetDeg = 0.0;
+    private double commandedAngle = 0.0; // where the turret is actually being driven (within limits)
+    private boolean targetInBlindSpot = false; // goal direction is behind the cable limits
     private long lastFixNanos = -1;
     private boolean fieldAimValid = false;
     private double fieldAimAngle = 0.0;
@@ -320,7 +322,7 @@ public class TurretController {
     }
 
     private void driveToAngle(double angle, double maxPower) {
-        int targetPositionTicks = (int) (reachableAngle(angle, getCurrentAngle()) * TICKS_PER_DEGREE);
+        int targetPositionTicks = (int) (commandTurret(angle) * TICKS_PER_DEGREE);
         turretMotor.setTargetPosition(targetPositionTicks);
         setMode(DcMotor.RunMode.RUN_TO_POSITION);
         turretMotor.setPower(maxPower);
@@ -341,7 +343,7 @@ public class TurretController {
             shotDistanceIn = 0;
         }
         leadOffsetDeg = wrap180(aimTargetAngle - goalAngle);
-        int targetPositionTicks = (int) (reachableAngle(aimTargetAngle, getCurrentAngle()) * TICKS_PER_DEGREE);
+        int targetPositionTicks = (int) (commandTurret(aimTargetAngle) * TICKS_PER_DEGREE);
         turretMotor.setTargetPosition(targetPositionTicks);
         setMode(DcMotor.RunMode.RUN_TO_POSITION);
         turretMotor.setPower(AIM_MAX_POWER);
@@ -402,6 +404,18 @@ public class TurretController {
         return new double[] {turretAngle + wrap180(angle - turretAngle), d};
     }
 
+    /** Picks the reachable angle for an aim direction and remembers it for the auto-fire check. */
+    private double commandTurret(double desired) {
+        commandedAngle = reachableAngle(desired, getCurrentAngle());
+        targetInBlindSpot = Math.abs(wrap180(commandedAngle - desired)) > 0.5;
+        return commandedAngle;
+    }
+
+    /** True while the goal is behind the cable limits, so the turret cannot point at it. */
+    public boolean isTargetInBlindSpot() {
+        return targetInBlindSpot;
+    }
+
     /** Robot velocity in the robot frame (in/s), from odometry. Zero = no lead. */
     public void setRobotVelocity(double forward, double left) {
         robotVForward = forward;
@@ -423,9 +437,13 @@ public class TurretController {
         return lastFixNanos < 0 ? Double.POSITIVE_INFINITY : (System.nanoTime() - lastFixNanos) / 1e9;
     }
 
-    /** How far the turret is from where auto-aim wants it, degrees. */
+    /**
+     * How far the turret still has to travel to where auto-aim drives it, degrees. Measured along
+     * the turret's real path (not wrapped), so a turret swinging the long way round past the goal
+     * direction does not count as aimed.
+     */
     public double getAimErrorDeg() {
-        return Math.abs(wrap180(aimTargetAngle - getCurrentAngle()));
+        return Math.abs(commandedAngle - getCurrentAngle());
     }
 
     public boolean isAutoAimEnabled() {
