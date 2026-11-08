@@ -43,16 +43,17 @@ public class FlywheelControllerTest {
         assertEquals(9, state.pidf.p, 0);
         assertEquals(0.5, state.pidf.i, 0);
         assertEquals(15, state.pidf.f, 0);
+        // 2:1 gearing: 3000 flywheel RPM = 1500 motor RPM = 1500 / 60 * 52 = 1300 ticks/s.
         controller.setTargetRPM(3000);
-        assertEquals(2600, state.velocity, 1e-9);
+        assertEquals(1300, state.velocity, 1e-9);
         assertEquals(3000, controller.getTargetRPM(), 1e-9);
-        state.velocity = 2470;
+        state.velocity = 1235;
         assertEquals(2850, controller.getCurrentRPM(), 1e-9);
         state.power = 0.8;
         controller.setTargetRPM(0);
         assertEquals(0, state.power, 0);
         assertEquals(0, controller.getTargetRPM(), 0);
-        assertEquals(2470, state.velocity, 0); // Off cuts power instead of commanding a braking velocity.
+        assertEquals(1235, state.velocity, 0); // Off cuts power instead of commanding a braking velocity.
     }
 
     @Test
@@ -61,7 +62,7 @@ public class FlywheelControllerTest {
         FlywheelController controller = new FlywheelController(state.motor());
         controller.setTargetRPM(9000);
         assertEquals(6000, controller.getTargetRPM(), 0);
-        assertEquals(5200, state.velocity, 0);
+        assertEquals(2600, state.velocity, 0);
         controller.setTargetRPM(-100);
         assertEquals(0, controller.getTargetRPM(), 0);
         assertThrows(IllegalArgumentException.class, () -> controller.setTargetRPM(Double.NaN));

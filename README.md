@@ -75,7 +75,7 @@ Auto-aim tracks the robot pose with Pedro's two-pod + IMU localizer and points t
 | `POSITION_P` (5) | `TurretController` | Turret hold stiffness; raise if floppy, lower if it shakes |
 | `MANUAL_SPEED_DEG_PER_SEC` (80) | `TurretController` | Bumper turret speed |
 | `AIM_MAX_POWER` (0.8), `GYRO_LEAD_SEC` (0.05) | `TurretController` | Auto-aim speed and turn-rate lead |
-| `DEFAULT_RPM` (2000) | `FlywheelController` | Flywheel speed |
+| `DEFAULT_RPM` (2000), `GEAR_RATIO` (2.0) | `FlywheelController` | Flywheel speed; all RPM values (also `ShotTable`) are flywheel RPM. The flywheel is geared up 2:1 from its motor (since 2026-11-08); `GEAR_RATIO` converts to motor encoder ticks. Retune `FLYWHEEL_P`/`F` if it struggles to hold speed. |
 | `DRIVE_SCALE` / `INTAKE_POWER`, `TRANSFER_POWER` | `BIOBUZZ` / `BiobuzzRobot` | Drive and mechanism power |
 | `AIM_TOLERANCE_DEG` (2), `RPM_TOLERANCE` (0.03), `MAX_TARGET_AGE_SEC` (0.2) | `BIOBUZZ` | Auto-fire checks |
 | `ShotTable.ROWS`, `CAMERA_PITCH_DEG` (35), `LEAD_GAIN` (1.0) | `ShotTable` / `TurretController` | Shot speed per distance, camera tilt, moving-shot lead |
