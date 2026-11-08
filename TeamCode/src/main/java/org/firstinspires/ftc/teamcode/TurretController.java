@@ -46,7 +46,7 @@ public class TurretController {
     // --- Where auto-aim gets the goal direction from ---
     // ODOMETRY: robot pose from the odometry pods + IMU (see FieldAim). LIMELIGHT: camera tags.
     public enum AimSource { ODOMETRY, LIMELIGHT }
-    public static AimSource AIM_SOURCE = AimSource.ODOMETRY;
+    public static AimSource AIM_SOURCE = AimSource.LIMELIGHT;
 
     // --- BIOBUZZ goal tags (Competition Manual TU08, section 9.9) ---
     // Each CELL has a cluster of four 3.25 in. 36h11 tags on its underside: red 30-33 / 34-37,
