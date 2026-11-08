@@ -52,7 +52,7 @@ Stopping the OpMode on the Driver Station stops all motors. There is no slow-dri
 
 The robot drives back and forth past the HIVE and turns around at each end, so the turret aims sideways on either side. Auto-aim (Limelight, on the turret) points at the goal cluster; the flywheel speed comes from `ShotTable.java` (horizontal distance → RPM and ball flight time). While the robot moves, the shot leads: the turret aims at the goal shifted back by robot velocity × flight time, and the RPM uses that shifted distance. Robot velocity comes from odometry, so the lead is only right when the pods are calibrated (the strafe pod still is not; forward motion, the usual drive-by direction, is).
 
-1. **Check the camera tilt.** `CAMERA_PITCH_DEG` (55°) and `CAMERA_HEIGHT_IN` (25 cm) in `TurretController` turn the Limelight's 3D tag position into horizontal distance and direction. With the goal in view, `Goal Distance` also shows the goal height: it should read about 50–53 in at every distance. If it drifts with distance, adjust `CAMERA_PITCH_DEG`.
+1. **Check the camera tilt.** `CAMERA_PITCH_DEG` (35° above level, i.e. 55° from vertical) and `CAMERA_HEIGHT_IN` (25 cm) in `TurretController` turn the Limelight's 3D tag position into horizontal distance and direction. With the goal in view, `Goal Distance` also shows the goal height: it should read about 50–53 in at every distance. If it drifts with distance, adjust `CAMERA_PITCH_DEG`.
 2. **Build the shot table** with **BIOBUZZ Shot Calibration**: stand still at 4–6 distances (side-on to the HIVE), let auto-aim lock on, adjust RPM with D-pad up/down (50 per press), shoot with Square (Circle reverses the transfer). When shots go in, copy the `Table row` line into `ShotTable.ROWS`, sorted by distance. Measure flight time from a slow-motion video of a shot. The table starts with one row: 52 in., 2000 RPM (back to the wall, facing the goal).
 3. **Stand still and hold Square** in BIOBUZZ at a few distances; check the `Shot` line.
 4. **Drive-bys**, slow then faster. If moving shots land behind the goal raise `LEAD_GAIN` (`TurretController`), if ahead lower it; or fix the flight times per row.
@@ -78,7 +78,7 @@ Auto-aim tracks the robot pose with Pedro's two-pod + IMU localizer and points t
 | `DEFAULT_RPM` (2000) | `FlywheelController` | Flywheel speed |
 | `DRIVE_SCALE` / `INTAKE_POWER`, `TRANSFER_POWER` | `BIOBUZZ` / `BiobuzzRobot` | Drive and mechanism power |
 | `AIM_TOLERANCE_DEG` (2), `RPM_TOLERANCE` (0.03), `MAX_TARGET_AGE_SEC` (0.2) | `BIOBUZZ` | Auto-fire checks |
-| `ShotTable.ROWS`, `CAMERA_PITCH_DEG` (55), `LEAD_GAIN` (1.0) | `ShotTable` / `TurretController` | Shot speed per distance, camera tilt, moving-shot lead |
+| `ShotTable.ROWS`, `CAMERA_PITCH_DEG` (35), `LEAD_GAIN` (1.0) | `ShotTable` / `TurretController` | Shot speed per distance, camera tilt, moving-shot lead |
 
 The desktop driver station in `~/code/ftcdriverstation` maps Space to a forward intake toggle and Shift+Space to a reverse toggle. P holds flywheel on and L holds transfer on. Its G/H turret keys were mapped to the old D-pad turret control; check they now send the bumpers.
 

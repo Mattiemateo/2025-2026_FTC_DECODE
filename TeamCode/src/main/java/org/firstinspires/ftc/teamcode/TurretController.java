@@ -68,11 +68,12 @@ public class TurretController {
     public static boolean IMU_SEARCH_ENABLED = true;
 
     // --- Shooting while moving ---
-    // Limelight mounting (measured 2026-11-08): lens 25 cm above the floor, tilted up 55 deg.
+    // Limelight mounting (measured 2026-11-08): lens 25 cm above the floor, optical axis 55 deg
+    // from VERTICAL, i.e. tilted up 35 deg above level. This is the angle above level.
     // The tilt turns the camera's 3D tag position into horizontal distance and direction.
-    // Check: "Goal height" in telemetry should read ~50-53 in at every distance; if it drifts
-    // with distance, adjust CAMERA_PITCH_DEG.
-    public static double CAMERA_PITCH_DEG = 55.0;
+    // Check: "Goal height" in telemetry should match the real tag height at every distance;
+    // if it drifts with distance, adjust CAMERA_PITCH_DEG.
+    public static double CAMERA_PITCH_DEG = 35.0;
     public static double CAMERA_HEIGHT_IN = 25.0 / 2.54;
     // Scales the shot lead for robot motion: >1 if moving shots land behind the goal, <1 if ahead.
     public static double LEAD_GAIN = 1.0; // Enable/disable IMU-based search when target is lost
