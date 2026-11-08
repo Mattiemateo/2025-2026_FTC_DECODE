@@ -19,7 +19,7 @@ Use two REV hubs for the eight REV HD Hex motors. In the Robot Configuration, ch
 
 The pod names refer to the configured motor ports their encoder cables occupy. Two passive goBILDA pods need no Pinpoint. The Control Hub is mounted **logo RIGHT, USB UP**; both `TurretController` and `pedro/Constants.java` use that orientation.
 
-**Manually center the turret before pressing INIT.** There is no homing sensor; encoder zero is its position at INIT, and turret angle 0 means pointing straight ahead. Software travel limits are -45° to +45° (`MIN_ANGLE` / `MAX_ANGLE` in `TurretController.java`) and depend on correct centering and encoder wiring.
+**Manually center the turret before pressing INIT.** There is no homing sensor; encoder zero is its position at INIT, and turret angle 0 means pointing straight ahead (clockwise positive, right bumper). The cables allow 180° counter-clockwise and 120° clockwise; software limits are -170° to +110° (`MIN_ANGLE` / `MAX_ANGLE` in `TurretController.java`), so the turret reaches both sides: right = +90°, left = -90°. Limits depend on correct centering.
 
 ## One-gamepad TeleOp: BIOBUZZ
 
@@ -39,13 +39,23 @@ The alliance sets the odometry start spot and which HIVE auto-aim targets. Witho
 | Left stick / right stick X | Robot-relative drive and strafe / turn (80% maximum) |
 | Right / left trigger | Intake in / out (60% maximum) |
 | Hold Cross / Circle | Transfer forward / reverse (90%) |
-| Hold Square | Flywheel at 2000 RPM using its encoder; release to coast |
+| Hold Square, auto-aim ON | **Shoot:** the transfer feeds only while the turret is on target (2°), the flywheel is within 3% of the shot-table RPM, the goal was seen in the last 0.2 s and the distance is inside the shot table. Telemetry `Shot` shows READY or what it waits for. |
+| Hold Square, auto-aim OFF | Flywheel at `DEFAULT_RPM` (2000); release to coast |
 | Hold Right / Left bumper | Turn turret (60°/s, encoder speed control); release to hold position |
-| Triangle | Toggle auto-aim on/off (starts off; bumpers are ignored while it is on) |
+| Triangle | Toggle auto-aim on/off (starts off; bumpers are ignored while it is on). While on, the flywheel pre-spins to the RPM for the current distance. |
 | D-pad up / down | The FAR / AUDIENCE cell of our HIVE is tipped up (auto-aim target) |
 | Options | Robot is back at its start spot: re-zero odometry there |
 
 Stopping the OpMode on the Driver Station stops all motors. There is no slow-drive mode or stop-all button.
+
+### Shooting on the move
+
+The robot drives back and forth past the HIVE and turns around at each end, so the turret aims sideways on either side. Auto-aim (Limelight, on the turret) points at the goal cluster; the flywheel speed comes from `ShotTable.java` (horizontal distance → RPM and ball flight time). While the robot moves, the shot leads: the turret aims at the goal shifted back by robot velocity × flight time, and the RPM uses that shifted distance. Robot velocity comes from odometry, so the lead is only right when the pods are calibrated (the strafe pod still is not; forward motion, the usual drive-by direction, is).
+
+1. **Check the camera tilt.** `CAMERA_PITCH_DEG` (55°) and `CAMERA_HEIGHT_IN` (25 cm) in `TurretController` turn the Limelight's 3D tag position into horizontal distance and direction. With the goal in view, `Goal Distance` also shows the goal height: it should read about 50–53 in at every distance. If it drifts with distance, adjust `CAMERA_PITCH_DEG`.
+2. **Build the shot table** with **BIOBUZZ Shot Calibration**: stand still at 4–6 distances (side-on to the HIVE), let auto-aim lock on, adjust RPM with D-pad up/down (50 per press), shoot with Square (Circle reverses the transfer). When shots go in, copy the `Table row` line into `ShotTable.ROWS`, sorted by distance. Measure flight time from a slow-motion video of a shot. The table starts with one row: 52 in., 2000 RPM (back to the wall, facing the goal).
+3. **Stand still and hold Square** in BIOBUZZ at a few distances; check the `Shot` line.
+4. **Drive-bys**, slow then faster. If moving shots land behind the goal raise `LEAD_GAIN` (`TurretController`), if ahead lower it; or fix the flight times per row.
 
 ### Auto-aim (odometry)
 
@@ -56,7 +66,7 @@ Auto-aim tracks the robot pose with Pedro's two-pod + IMU localizer and points t
 - **Turret direction:** set `TURRET_POSITIVE_IS_CLOCKWISE` to match which way the right bumper turns the turret (seen from above).
 - Odometry drifts; re-zero with Options at the start spot. The turret only covers ±45°, so face roughly toward the HIVE.
 
-The Limelight auto-aim (tag clusters 30–45, alliance filter, gyro stabilisation) is still in `TurretController` behind `AIM_SOURCE = LIMELIGHT`, using pipeline `LIMELIGHT_PIPELINE` (currently 1). It needs an AprilTag pipeline with family 36h11, marker size 82.55 mm and full 3D enabled.
+**Currently `AIM_SOURCE = LIMELIGHT`** (`TurretController`): Limelight auto-aim (tag clusters 30–45, alliance filter, gyro stabilisation) on pipeline `LIMELIGHT_PIPELINE` = 1, an AprilTag pipeline with family 36h11, marker size 82.55 mm and full 3D. Set `AIM_SOURCE = ODOMETRY` for the odometry aim described here; auto-fire needs the Limelight distance.
 
 ### Tuning knobs
 
@@ -66,13 +76,17 @@ The Limelight auto-aim (tag clusters 30–45, alliance filter, gyro stabilisatio
 | `MANUAL_SPEED_DEG_PER_SEC` (60) | `TurretController` | Bumper turret speed |
 | `AIM_MAX_POWER` (0.6), `GYRO_LEAD_SEC` (0.05) | `TurretController` | Auto-aim speed and turn-rate lead |
 | `DEFAULT_RPM` (2000) | `FlywheelController` | Flywheel speed |
-| `DRIVE_SCALE`, `INTAKE_POWER`, `TRANSFER_POWER` | `BIOBUZZ` | Drive and mechanism power |
+| `DRIVE_SCALE` / `INTAKE_POWER`, `TRANSFER_POWER` | `BIOBUZZ` / `BiobuzzRobot` | Drive and mechanism power |
+| `AIM_TOLERANCE_DEG` (2), `RPM_TOLERANCE` (0.03), `MAX_TARGET_AGE_SEC` (0.2) | `BIOBUZZ` | Auto-fire checks |
+| `ShotTable.ROWS`, `CAMERA_PITCH_DEG` (55), `LEAD_GAIN` (1.0) | `ShotTable` / `TurretController` | Shot speed per distance, camera tilt, moving-shot lead |
 
 The desktop driver station in `~/code/ftcdriverstation` maps Space to a forward intake toggle and Shift+Space to a reverse toggle. P holds flywheel on and L holds transfer on. Its G/H turret keys were mapped to the old D-pad turret control; check they now send the bumpers.
 
 ## Other OpModes
 
+- **BIOBUZZ Shot Calibration:** builds `ShotTable.ROWS` (see Shooting on the move).
 - **BIOBUZZ Pod Check:** shows raw ticks of both odometry pods. A goBILDA 4-Bar pod reads about 12,100 ticks per tile (24 in.). Use it before re-tuning.
+- **BIOBUZZ Limelight Web Proxy:** while it runs, a laptop on the robot Wi-Fi reaches the Limelight web UI at http://192.168.43.1:5801 (the Limelight itself is 172.29.0.1 on the Control Hub's USB network; `eth0:172.29.0.25` on the Driver Station is the hub's own end).
 
 ## Sloth Load
 
@@ -103,7 +117,7 @@ Use JDK 17 or newer (this setup was built with JDK 21), Android SDK 36, and Andr
 ./gradlew :TeamCode:assembleDebug :TeamCode:testDebugUnitTest :TeamCode:lintDebug
 ```
 
-The unit tests cover mecanum output directions/power bounds, turret limits and jogging, the Limelight tag-cluster maths, gyro counter-rotation, and the odometry aim geometry. The SDK/AutoTune dependencies still emit native-library alignment and Kotlin metadata compatibility warnings with the official SDK build tools. On-robot checks of auto-aim, odometry tuning and flywheel speed remain to be done on the actual robot.
+The unit tests cover mecanum output directions/power bounds, turret limits, jogging and reachable angles, the Limelight tag-cluster maths, gyro counter-rotation, the odometry aim geometry, shot-table interpolation, moving-shot lead and the auto-fire checks. The SDK/AutoTune dependencies still emit native-library alignment and Kotlin metadata compatibility warnings with the official SDK build tools. On-robot checks of auto-aim, odometry tuning and flywheel speed remain to be done on the actual robot.
 
 ---
 

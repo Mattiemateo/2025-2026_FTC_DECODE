@@ -134,6 +134,91 @@ public class BIOBUZZTest {
         }
     }
 
+    @Test
+    public void turretReachesBothSidesAndPicksTheNearLimitInTheGap() {
+        // Limits -170..110: right side (+90) and left side (-90) are both reachable.
+        assertEquals(90, TurretController.reachableAngle(90, 0), 1e-9);
+        assertEquals(-90, TurretController.reachableAngle(-90, 0), 1e-9);
+        assertEquals(-90, TurretController.reachableAngle(270, 0), 1e-9);
+        // 170 deg (behind, right) is in the gap; -170 points closer than 110.
+        assertEquals(TurretController.MIN_ANGLE, TurretController.reachableAngle(170, 0), 1e-9);
+        // 130 deg is closer to the 110 limit.
+        assertEquals(TurretController.MAX_ANGLE, TurretController.reachableAngle(130, 0), 1e-9);
+    }
+
+    @Test
+    public void shotTableInterpolatesAndRefusesOutsideItsRange() {
+        double[][] rows = {{40, 1800, 0.40}, {60, 2200, 0.50}};
+        assertEquals(2000, ShotTable.interpolate(rows, ShotTable.RPM, 50), 1e-9);
+        assertEquals(0.45, ShotTable.interpolate(rows, ShotTable.FLIGHT_TIME, 50), 1e-9);
+        assertEquals(1800, ShotTable.interpolate(rows, ShotTable.RPM, 10), 1e-9); // held flat
+        assertEquals(2200, ShotTable.interpolate(rows, ShotTable.RPM, 90), 1e-9);
+        assertTrue(ShotTable.inRange(rows, 50));
+        assertTrue(ShotTable.inRange(rows, 40 - ShotTable.INRANGE_MARGIN_IN));
+        assertFalse(ShotTable.inRange(rows, 30));
+        assertFalse(ShotTable.inRange(rows, 0));
+    }
+
+    @Test
+    public void movingShotsAimBehindTheGoal() {
+        boolean original = TurretController.TURRET_POSITIVE_IS_CLOCKWISE;
+        try {
+            TurretController.TURRET_POSITIVE_IS_CLOCKWISE = true;
+            double[][] rows = {{52, 2000, 0.5}};
+            // Standing still: no lead.
+            double[] still = TurretController.leadSolution(90, 52, 0, 0, 1.0, rows);
+            assertEquals(90, still[0], 1e-9);
+            assertEquals(52, still[1], 1e-9);
+            // Goal on the right, driving forward: aim further back (more clockwise) and farther.
+            double[] forward = TurretController.leadSolution(90, 52, 40, 0, 1.0, rows);
+            assertTrue(forward[0] > 90);
+            assertTrue(forward[1] > 52);
+            // Driving backward: aim toward the front instead.
+            assertTrue(TurretController.leadSolution(90, 52, -40, 0, 1.0, rows)[0] < 90);
+            // Goal on the left, driving forward: aim further back on the left (more negative).
+            assertTrue(TurretController.leadSolution(-90, 52, 40, 0, 1.0, rows)[0] < -90);
+            // Exact for one step: 40 in/s * 0.5 s = 20 in back from a goal 52 in to the right.
+            assertEquals(90 + Math.toDegrees(Math.atan2(20, 52)), forward[0], 1e-6);
+        } finally {
+            TurretController.TURRET_POSITIVE_IS_CLOCKWISE = original;
+        }
+    }
+
+    @Test
+    public void autoFireWaitsForEveryCheck() {
+        double[] row = ShotTable.ROWS[0];
+        double d = row[0], rpm = row[1];
+        assertNull(BIOBUZZ.shotBlocker(0.5, rpm, rpm, 0.05, d));
+        assertNotNull(BIOBUZZ.shotBlocker(5.0, rpm, rpm, 0.05, d)); // not aimed
+        assertNotNull(BIOBUZZ.shotBlocker(0.5, rpm * 0.9, rpm, 0.05, d)); // not up to speed
+        assertNotNull(BIOBUZZ.shotBlocker(0.5, rpm, rpm, 1.0, d)); // goal not seen recently
+        assertNotNull(BIOBUZZ.shotBlocker(0.5, rpm, rpm, 0.05, d + 100)); // too far
+    }
+
+    @Test
+    public void odometryVelocityIsTurnedIntoTheRobotFrame() {
+        // Facing +Y (90 deg) and moving +Y at 10 in/s = straight forward.
+        double[] v = BiobuzzRobot.robotFrameVelocity(0, 1, Math.PI / 2, 0.1);
+        assertEquals(10, v[0], 1e-9);
+        assertEquals(0, v[1], 1e-9);
+        // Facing +X and moving +Y = to the robot's left.
+        v = BiobuzzRobot.robotFrameVelocity(0, 1, 0, 0.1);
+        assertEquals(0, v[0], 1e-9);
+        assertEquals(10, v[1], 1e-9);
+    }
+
+    @Test
+    public void tiltedCameraPointsBecomeLevelDistanceAndHeight() {
+        // Goal 50 in ahead and 40 in above a camera tilted up 55 deg, 5 in to the right.
+        double t = Math.toRadians(55);
+        double forward = 50, up = 40, right = 5;
+        double[] camera = {right, forward * Math.sin(t) - up * Math.cos(t), forward * Math.cos(t) + up * Math.sin(t)};
+        double[] level = TurretController.cameraToLevel(camera, 55);
+        assertEquals(right, level[0], 1e-9);
+        assertEquals(forward, level[1], 1e-9);
+        assertEquals(up, level[2], 1e-9);
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void turretRejectsInvalidTargets() {
         TurretController.clampAngle(Double.NaN);

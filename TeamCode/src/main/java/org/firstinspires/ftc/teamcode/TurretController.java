@@ -32,8 +32,9 @@ public class TurretController {
     // Leave USE_CUSTOM_VELOCITY_PIDF false to keep the hub's defaults for the configured motor.
     public static boolean USE_CUSTOM_VELOCITY_PIDF = false;
     public static double VELOCITY_P = 10.0, VELOCITY_I = 3.0, VELOCITY_D = 0.0, VELOCITY_F = 0.0;
-    // shortcut: provisional travel limits, measure safe travel before widening them.
-    public static double MIN_ANGLE = -45.0, MAX_ANGLE = 45.0;
+    // Travel limits, 0 = straight ahead, clockwise positive. The cables allow 180 deg CCW and
+    // 120 deg CW; these keep a 10 deg margin. Right side of the robot = +90, left side = -90.
+    public static double MIN_ANGLE = -170.0, MAX_ANGLE = 110.0;
     public static double TURRET_MAX_POWER = 0.3;
     // Power used while a turret button is held; on release the turret holds where it stopped.
     public static double MANUAL_SPEED_DEG_PER_SEC = 60.0;
@@ -64,7 +65,17 @@ public class TurretController {
     public static double VISION_FILTER = 0.5; // 0..1, how much each camera frame corrects the aim (lower = smoother)
     public static double GYRO_LEAD_SEC = 0.05; // aim ahead by turn rate x this, covers motor lag (0 = off)
     public static double AIM_MAX_POWER = 0.6; // auto-aim needs to be faster than manual to keep up with spins
-    public static boolean IMU_SEARCH_ENABLED = true; // Enable/disable IMU-based search when target is lost
+    public static boolean IMU_SEARCH_ENABLED = true;
+
+    // --- Shooting while moving ---
+    // Limelight mounting (measured 2026-11-08): lens 25 cm above the floor, tilted up 55 deg.
+    // The tilt turns the camera's 3D tag position into horizontal distance and direction.
+    // Check: "Goal height" in telemetry should read ~50-53 in at every distance; if it drifts
+    // with distance, adjust CAMERA_PITCH_DEG.
+    public static double CAMERA_PITCH_DEG = 55.0;
+    public static double CAMERA_HEIGHT_IN = 25.0 / 2.54;
+    // Scales the shot lead for robot motion: >1 if moving shots land behind the goal, <1 if ahead.
+    public static double LEAD_GAIN = 1.0; // Enable/disable IMU-based search when target is lost
     public int LIMELIGHT_PIPELINE = 1; // this should probably stay like this
 
     // --- State ---
@@ -74,6 +85,12 @@ public class TurretController {
     private double targetBearingField = 0.0; // target direction in field frame (turret degrees)
     private double aimTargetAngle = 0.0;
     private ClusterFix lastClusterFix = null;
+    private double robotVForward = 0.0; // in/s, robot frame
+    private double robotVLeft = 0.0; // in/s, robot frame
+    private double goalDistanceIn = 0.0; // horizontal, from the last fix with 3D data
+    private double shotDistanceIn = 0.0; // horizontal distance to the lead-compensated aim point
+    private double leadOffsetDeg = 0.0;
+    private long lastFixNanos = -1;
     private boolean fieldAimValid = false;
     private double fieldAimAngle = 0.0;
     private long lastFrameNanos = -1;
@@ -195,7 +212,11 @@ public class TurretController {
             targetLostTimer.reset();
             aimAtBearing(robotHeading);
             lastClusterFix = fix;
-            if (fix.distanceM > 0) lastKnownDistance = fix.distanceM;
+            if (fix.distanceM > 0) {
+                lastKnownDistance = fix.distanceM;
+                goalDistanceIn = fix.horizontalIn;
+                lastFixNanos = System.nanoTime();
+            }
         } else if (
             targetWasVisible &&
             targetLostTimer.seconds() < TARGET_LOST_TIMEOUT &&
@@ -298,7 +319,7 @@ public class TurretController {
     }
 
     private void driveToAngle(double angle, double maxPower) {
-        int targetPositionTicks = (int) (clampAngle(angle) * TICKS_PER_DEGREE);
+        int targetPositionTicks = (int) (reachableAngle(angle, getCurrentAngle()) * TICKS_PER_DEGREE);
         turretMotor.setTargetPosition(targetPositionTicks);
         setMode(DcMotor.RunMode.RUN_TO_POSITION);
         turretMotor.setPower(maxPower);
@@ -307,11 +328,107 @@ public class TurretController {
     /** Gyro-stabilised aim: counter-rotate the turret against the robot's heading (and turn rate). */
     private void aimAtBearing(double robotHeading) {
         double leadHeading = robotHeading + getYawRateDegPerSec() * GYRO_LEAD_SEC;
-        aimTargetAngle = turretAngleFor(targetBearingField, leadHeading);
-        int targetPositionTicks = (int) (clampAngle(aimTargetAngle) * TICKS_PER_DEGREE);
+        double goalAngle = turretAngleFor(targetBearingField, leadHeading);
+        if (goalDistanceIn > 0) {
+            // Aim where the ball will meet the goal, given the robot's own motion.
+            double[] lead = leadSolution(goalAngle, goalDistanceIn, robotVForward, robotVLeft,
+                LEAD_GAIN, ShotTable.ROWS);
+            aimTargetAngle = lead[0];
+            shotDistanceIn = lead[1];
+        } else {
+            aimTargetAngle = goalAngle;
+            shotDistanceIn = 0;
+        }
+        leadOffsetDeg = wrap180(aimTargetAngle - goalAngle);
+        int targetPositionTicks = (int) (reachableAngle(aimTargetAngle, getCurrentAngle()) * TICKS_PER_DEGREE);
         turretMotor.setTargetPosition(targetPositionTicks);
         setMode(DcMotor.RunMode.RUN_TO_POSITION);
         turretMotor.setPower(AIM_MAX_POWER);
+    }
+
+    /**
+     * Picks the turret angle for a direction: inside the travel limits and, if the direction can be
+     * reached two ways, the one nearest the current angle. Directions in the gap behind the
+     * limits go to whichever limit points closest.
+     */
+    static double reachableAngle(double desired, double current) {
+        clampAngle(desired); // throws on a non-finite angle or bad limits
+        double wrapped = wrap180(desired);
+        double best = Double.NaN;
+        for (int k = -1; k <= 1; k++) {
+            double candidate = wrapped + 360.0 * k;
+            if (candidate >= MIN_ANGLE && candidate <= MAX_ANGLE
+                    && (Double.isNaN(best) || Math.abs(candidate - current) < Math.abs(best - current))) {
+                best = candidate;
+            }
+        }
+        if (!Double.isNaN(best)) return best;
+        double toMax = Math.abs(wrap180(wrapped - MAX_ANGLE));
+        double toMin = Math.abs(wrap180(wrapped - MIN_ANGLE));
+        return toMax <= toMin ? MAX_ANGLE : MIN_ANGLE;
+    }
+
+    /**
+     * Limelight camera-space point (x right, y down, z out of the lens) to a level frame
+     * {right, forward, up} for a camera tilted up by pitchDeg. Same units as the input.
+     */
+    static double[] cameraToLevel(double[] p, double pitchDeg) {
+        double t = Math.toRadians(pitchDeg);
+        double forward = p[2] * Math.cos(t) + p[1] * Math.sin(t);
+        double up = p[2] * Math.sin(t) - p[1] * Math.cos(t);
+        return new double[] {p[0], forward, up};
+    }
+
+    /**
+     * Shooting while moving: the ball keeps the robot's velocity, so aim at a virtual goal
+     * shifted back by velocity x flight time. Returns {turretAngle, horizontal distance} for
+     * that virtual goal. Velocity is in the robot frame (in/s, forward and left).
+     */
+    static double[] leadSolution(double turretAngle, double distanceIn, double vForward, double vLeft,
+                                 double gain, double[][] rows) {
+        double s = turretSign();
+        double phi = Math.toRadians(-s * turretAngle); // counter-clockwise from straight ahead
+        double gx = distanceIn * Math.cos(phi);
+        double gy = distanceIn * Math.sin(phi);
+        double vx = gx, vy = gy, d = distanceIn;
+        for (int i = 0; i < 3; i++) { // flight time depends on distance, so iterate
+            double t = ShotTable.flightTime(rows, d);
+            vx = gx - gain * vForward * t;
+            vy = gy - gain * vLeft * t;
+            d = Math.hypot(vx, vy);
+        }
+        double angle = -s * Math.toDegrees(Math.atan2(vy, vx));
+        return new double[] {turretAngle + wrap180(angle - turretAngle), d};
+    }
+
+    /** Robot velocity in the robot frame (in/s), from odometry. Zero = no lead. */
+    public void setRobotVelocity(double forward, double left) {
+        robotVForward = forward;
+        robotVLeft = left;
+    }
+
+    /** Horizontal distance to the lead-compensated aim point (in), 0 if unknown. */
+    public double getShotDistanceIn() {
+        return shotDistanceIn;
+    }
+
+    /** Horizontal distance to the goal itself (in), 0 if unknown. */
+    public double getGoalDistanceIn() {
+        return goalDistanceIn;
+    }
+
+    /** Seconds since the goal was last seen with a distance; infinite if not since auto-aim started. */
+    public double secondsSinceGoalSeen() {
+        return lastFixNanos < 0 ? Double.POSITIVE_INFINITY : (System.nanoTime() - lastFixNanos) / 1e9;
+    }
+
+    /** How far the turret is from where auto-aim wants it, degrees. */
+    public double getAimErrorDeg() {
+        return Math.abs(wrap180(aimTargetAngle - getCurrentAngle()));
+    }
+
+    public boolean isAutoAimEnabled() {
+        return autoAimEnabled;
     }
 
     /** +1 when positive turret angles turn the turret clockwise (seen from above), else -1. */
@@ -373,12 +490,17 @@ public class TurretController {
         final int tagCount;
         final double txDeg; // horizontal angle to the cluster centre, positive = right
         final double distanceM; // camera to cluster centre, 0 if 3D data is unavailable
+        final double horizontalIn; // level distance from the camera to the cluster centre, 0 if unknown
+        final double heightAboveCameraIn;
 
-        ClusterFix(int clusterIndex, int tagCount, double txDeg, double distanceM) {
+        ClusterFix(int clusterIndex, int tagCount, double txDeg, double distanceM,
+                   double horizontalIn, double heightAboveCameraIn) {
             this.clusterIndex = clusterIndex;
             this.tagCount = tagCount;
             this.txDeg = txDeg;
             this.distanceM = distanceM;
+            this.horizontalIn = horizontalIn;
+            this.heightAboveCameraIn = heightAboveCameraIn;
         }
     }
 
@@ -433,14 +555,16 @@ public class TurretController {
             // No 3D poses: average the tags' angles (exact only when the tags straddle the centre).
             int seen = 0;
             for (LLResultTypes.FiducialResult f : fiducials) if (clusterOf(f.getFiducialId()) == bestCluster) seen++;
-            return new ClusterFix(bestCluster, seen, txSum / seen, 0);
+            return new ClusterFix(bestCluster, seen, txSum / seen, 0, 0, 0);
         }
         double[] offsetArray = new double[offsets.size()];
         for (int i = 0; i < offsetArray.length; i++) offsetArray[i] = offsets.get(i);
         double[] center = clusterCenter(offsetArray, positions.toArray(new double[0][]));
-        double txDeg = Math.toDegrees(Math.atan2(center[0], center[2]));
+        double[] level = cameraToLevel(center, CAMERA_PITCH_DEG);
+        double txDeg = Math.toDegrees(Math.atan2(level[0], level[1]));
         double distance = Math.sqrt(center[0] * center[0] + center[1] * center[1] + center[2] * center[2]);
-        return new ClusterFix(bestCluster, tagCount, txDeg, distance);
+        return new ClusterFix(bestCluster, tagCount, txDeg, distance,
+            Math.hypot(level[0], level[1]) / 0.0254, level[2] / 0.0254);
     }
 
     static int clusterOf(int tagId) {
@@ -512,6 +636,9 @@ public class TurretController {
         if (!autoAimEnabled && enable) {
             targetWasVisible = false; // start from a fresh camera fix, not an old bearing
             lastFrameNanos = -1;
+            lastFixNanos = -1;
+            goalDistanceIn = 0;
+            shotDistanceIn = 0;
         }
         this.autoAimEnabled = enable;
     }
@@ -629,7 +756,11 @@ public class TurretController {
                 int firstId = FIRST_TAG_ID + lastClusterFix.clusterIndex * 4;
                 telemetry.addData("Goal Tags / Seen", "%d-%d / %d", firstId, firstId + 3, lastClusterFix.tagCount);
                 telemetry.addData("Goal Distance", lastClusterFix.distanceM > 0
-                    ? String.format("%.2f m", lastClusterFix.distanceM) : "no 3D data (enable full 3D)");
+                    ? String.format("%.2f m (horizontal %.0f in, goal height %.0f in)", lastClusterFix.distanceM,
+                        goalDistanceIn, lastClusterFix.heightAboveCameraIn + CAMERA_HEIGHT_IN)
+                    : "no 3D data (enable full 3D)");
+                telemetry.addData("Lead / Shot Distance", "%.1f° / %.0f in  (v fwd %.0f, left %.0f in/s)",
+                    leadOffsetDeg, shotDistanceIn, robotVForward, robotVLeft);
             }
         }
         if (autoAimEnabled && AIM_SOURCE == AimSource.LIMELIGHT) {
