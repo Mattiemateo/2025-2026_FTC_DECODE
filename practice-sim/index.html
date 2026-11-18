@@ -1,0 +1,1423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BIOBUZZ Driver Practice</title>
+<style>
+  :root {
+    --bg: #0e1014; --panel: #171a21; --panel2: #1e222b; --line: #2b303c;
+    --text: #e7e9ee; --dim: #8b92a1; --red: #e5484d; --blue: #3e7bfa;
+    --ok: #30a46c; --warn: #f5a524; --ball: #ffd43b; --accent: #ffd43b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { display: grid; grid-template-columns: 1fr 360px; height: 100vh; overflow: hidden; }
+  main { position: relative; min-width: 0; min-height: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+  aside { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 24px; }
+  h1 { font-size: 17px; margin: 0 0 2px; letter-spacing: .02em; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 18px 0 8px; }
+  .sub { color: var(--dim); font-size: 12px; }
+  .pad { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--panel2);
+    margin-top: 10px; font-size: 13px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); flex: none; }
+  .dot.on { background: var(--ok); }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .stat { background: var(--panel2); border-radius: 8px; padding: 6px 8px; }
+  .stat b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 11px; color: var(--dim); }
+  button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+  button:hover { border-color: var(--dim); }
+  button.primary { background: var(--accent); color: #1a1a1a; border-color: var(--accent); font-weight: 600; }
+  .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  pre#telemetry { margin: 0; background: #0b0d10; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; min-height: 120px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  td { padding: 4px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.k { white-space: nowrap; font-weight: 600; width: 1%; }
+  td.kb { color: var(--dim); font-family: ui-monospace, Menlo, monospace; font-size: 11px; white-space: nowrap; text-align: right; width: 1%; }
+  tr.active td { background: rgba(255, 212, 59, .14); }
+  tr.active td.k { color: var(--accent); }
+  .ignored { color: var(--dim); font-size: 11px; }
+  label.set { display: grid; grid-template-columns: 1fr 150px; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
+  select, input[type=range] { width: 100%; font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
+  textarea, input[type=number] { width: 100%; font: 12px ui-monospace, Menlo, monospace; color: var(--text); background: #0b0d10;
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  input[type=number] { padding: 3px 6px; }
+  table.cal td { border-bottom: 0; padding: 3px 4px; }
+  table.cal td.src { color: var(--dim); font-size: 11px; }
+  .note { font-size: 12px; color: var(--dim); margin-top: 6px; }
+  details summary { cursor: pointer; color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin: 18px 0 8px; }
+  @media (max-width: 900px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 60vh auto; height: auto; overflow: auto; }
+    aside { border-left: 0; border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<main><canvas id="field"></canvas></main>
+<aside>
+  <h1>BIOBUZZ Driver Practice</h1>
+  <div class="sub">Same controls as the BIOBUZZ TeleOp (gamepad 1)</div>
+  <div class="pad" id="padStatus"><span class="dot" id="padDot"></span><span id="padText">No controller: connect a PS controller and press any button</span></div>
+
+  <h2>Match</h2>
+  <div class="stats">
+    <div class="stat"><b id="sScore">0</b><span>points</span></div>
+    <div class="stat"><b id="sTips">0</b><span>HIVE tips</span></div>
+    <div class="stat"><b id="sAcc">–</b><span>in the CELL</span></div>
+    <div class="stat"><b id="sBest">0</b><span>best</span></div>
+  </div>
+  <div class="note" id="bench"></div>
+  <div class="row">
+    <button class="primary" id="btnStart">Start match</button>
+    <button id="btnReset">Back to INIT</button>
+  </div>
+  <div class="note" id="phaseNote"></div>
+
+  <h2>Driver Station telemetry</h2>
+  <pre id="telemetry"></pre>
+
+  <h2>Controls</h2>
+  <table id="controls"></table>
+  <div class="note">Share (or Enter) starts the match from INIT; hold it 1 s during a match to go back to INIT. This is a simulator shortcut, not part of the TeleOp.</div>
+
+  <details open>
+    <summary>Settings</summary>
+    <label class="set">View <select id="optView">
+      <option value="driver">Driver (our alliance wall at the bottom)</option>
+      <option value="audience">Audience (red left, blue right)</option></select></label>
+    <label class="set">Match length <select id="optLength">
+      <option value="120">2:00 TeleOp</option><option value="0">Free practice (no timer)</option></select></label>
+    <label class="set">Auto-aim source <select id="optAim">
+      <option value="LIMELIGHT">Limelight (robot default)</option><option value="ODOMETRY">Odometry</option></select></label>
+    <label class="set">Start from <select id="optStart">
+      <option value="auto1">After a 1-tip auto (parked in LOADING ZONE)</option>
+      <option value="setup">Match setup (4 pre-loads, HIVE as staged)</option></select></label>
+    <label class="set">Odometry drift <select id="optDrift">
+      <option value="off">Off</option><option value="low">Low</option><option value="high">High</option><option value="config" id="optDriftConfig">From ticks-to-inches</option></select></label>
+    <label class="set">Aim helpers <select id="optHelpers">
+      <option value="1">Show (camera cone, aim line, landing spot)</option><option value="0">Hide (match realism)</option></select></label>
+    <div class="note" id="aimNote"></div>
+  </details>
+
+  <details id="calSection">
+    <summary>Robot calibration (driving + odometry)</summary>
+    <div class="note">Paste the <b>Foresight Tuner</b> or <b>Two Wheel Tuner</b> output, or all of <code>pedro/Constants.java</code>, and press Apply. Or type the numbers below. Saved in this browser.</div>
+    <textarea id="calPaste" rows="4" spellcheck="false" placeholder="c.maxAchievableForwardVelocity.set(58.2);&#10;c.maxAchievableStrafeVelocity.set(47.1);&#10;..."></textarea>
+    <div class="row"><button id="calApply">Apply pasted values</button><button id="calReset">Reset to defaults</button></div>
+    <div class="note" id="calMsg"></div>
+    <table id="calFields" class="cal"></table>
+    <div class="note">
+      <b>Braking:</b> the TeleOp uses BRAKE, but the Foresight Tuner measures deceleration while coasting (FLOAT), so real stops are quicker.
+      To measure braking: drive full speed (or 80% in the TeleOp), let go, measure the stopping distance <i>d</i> and use <i>v</i>² ÷ (2 × <i>d</i>).
+      Coast deceleration is the lower limit; if both coast values are set, strafing brakes in the same ratio.<br>
+      <b>Turn rate:</b> spin in place at full right stick for 5 s and count turns (turns × 360 ÷ 5 × 1.25, because the TeleOp caps at 80%).<br>
+      <b>Odometry:</b> with Odometry drift set to "From ticks-to-inches", the simulated pods read stock goBILDA 4-Bar ticks (0.001979 in/tick) through your ticks-to-inches values, so a wrong value shows up as drift.
+    </div>
+  </details>
+
+  <details>
+    <summary>Field and scoring</summary>
+    <div class="note">
+      From the Competition Manual (TU09): 40 POLLEN (2.8 in.) and 8 + 8 NECTAR (3.6 in.). Staging: 4 POLLEN in each FLOWER, 4 in each GARDEN,
+      4 pre-loaded per robot, 3 NECTAR in each upward CELL, 5 NECTAR per ALLIANCE AREA. Practice has no partner or opponents, so their pre-loads sit in the
+      LOADING ZONES, as the manual does for robots that don't show up.<br><br>
+      The HIVE frame stands at both ends of the crossbar (49.5 in. apart); robots can drive under the HIVES. The CELL opening is 20 × 12 in. seen from above.
+      A tip spills the CELL under it and the other CELL turns up. After each of our tips the human player puts one NECTAR in our LOADING ZONE,
+      and all remaining NECTAR at 1:00. Our robot leaves NECTAR alone. You can pull POLLEN out of the bottom of a FLOWER by driving the intake into it.<br><br>
+      Tipping (from a third-party rules summary, not the manual): 7 POLLEN don't tip, 8 do; 3 NECTAR + 2 POLLEN don't, 3 NECTAR + 3 POLLEN do.<br>
+      Points: TIP 20, each ball left in the upward CELL at the end 2, GARDEN 1, PARK in the LOADING ZONE 5. The 1-tip-auto start counts LEAVE 3 + PARK 5 + TIP 20.
+      FLOWERS and RANKING POINTS aren't scored here.
+    </div>
+  </details>
+
+  <details>
+    <summary>About the simulation</summary>
+    <div class="note">
+      Copied from the <code>biobuzz-season</code> code: the drive math (<code>drivePowers</code>, 80% scale, robot-relative),
+      intake and transfer power, the turret travel limits (−170° to +110°, clockwise positive), its 80°/s jog and hold-on-release,
+      Limelight auto-aim with gyro hold, the search sweep, the shot lead for a moving robot, the <code>ShotTable</code> rows, and every
+      auto-fire check in <code>shotBlocker</code>. Field coordinates and the start spot come from <code>FieldAim</code>.<br><br>
+      Driving speed, braking and turn rate come from Robot calibration above (guesses until the Pedro tuning is done). Guessed: flywheel spin-up time, the HIVE's footprint (approximate), ball size,
+      capacity (3), and the CELL scoring radius. A shot lands at the distance the measured flywheel RPM gives in the shot table, so it scores
+      when the RPM and aim are right, just like on the real robot once the table is tuned.
+    </div>
+  </details>
+</aside>
+
+<script>
+'use strict';
+
+// ============================================================================
+// Robot constants: copied from the biobuzz-season TeamCode. Update these when the Java changes.
+// ============================================================================
+const BIOBUZZ = { DRIVE_SCALE: 0.8, AIM_TOLERANCE_DEG: 2.0, RPM_TOLERANCE: 0.03, MAX_TARGET_AGE_SEC: 0.2 };
+const ROBOT = { INTAKE_POWER: 0.6, TRANSFER_POWER: 0.9, VELOCITY_FILTER: 0.5 };
+const FLYWHEEL = { DEFAULT_RPM: 2000, MAX_RPM: 6000 };
+const TURRET = {
+  MIN_ANGLE: -170, MAX_ANGLE: 110, TURRET_MAX_POWER: 0.3, MANUAL_SPEED_DEG_PER_SEC: 80,
+  SEARCH_POWER: 0.3, SEARCH_DWELL_TIME: 0.3, TARGET_LOST_TIMEOUT: 2.0,
+  SEARCH_INITIAL_ANGLE: 15, SEARCH_ANGLE_INCREMENT: 20, SEARCH_MAX_ANGLE: 135,
+  VISION_FILTER: 0.5, GYRO_LEAD_SEC: 0.05, AIM_MAX_POWER: 0.8, IMU_SEARCH_ENABLED: true,
+  LEAD_GAIN: 1.0, POSITIVE_IS_CLOCKWISE: true,
+};
+const FIELD_AIM = { HIVE_X: 12.75, CELL_Y: 13.4, ROBOT_HALF_LENGTH: 9.0, START_Y: 0.0, TURRET_FORWARD_OFFSET: 0.0, HALF_FIELD: 72 };
+const SHOT_TABLE = {
+  // {horizontal distance (in), flywheel RPM, flight time (s)}
+  ROWS: [[42, 1850, 0.40], [58, 2000, 0.45], [70, 2150, 0.50], [80, 2300, 0.55]],
+  INRANGE_MARGIN_IN: 6.0,
+};
+
+// ============================================================================
+// Simulation guesses (not in the robot code). Tune so it feels like the real robot.
+// ============================================================================
+const SIM = {
+  turretFullSpeed: 267,    // deg/s at power 1 (manual 80 deg/s ~ 0.3 power)
+  turretGain: 12,          // 1/s, RUN_TO_POSITION proportional gain
+  flySpinUpTau: 0.3, flyCoastTau: 2.5, shotRpmDrop: 0.05, rpmNoise: 6,
+  feedTimeFullPower: 0.2,  // s per ball at transfer power 1
+  capacity: 4,             // G407: a robot may control at most 4 SCORING ELEMENTS
+  camHalfFovDeg: 27,       // Limelight 3A ~54 deg horizontal
+  camMinDist: 45,          // README: below ~45 in the camera loses the tags
+  camMaxDist: 150,
+  shotSpreadDeg: 0.6, shotSpreadIn: 1.0,
+  robotHalf: 9,            // 18 in robot
+};
+
+// ============================================================================
+// BIOBUZZ field, from the Competition Manual (TU09) sections 9-10. Same frame as FieldAim: inches, origin at the
+// centre, +X toward the blue wall, +Y away from the audience. Positions read off Figures 9-2 and 10-2 (about ±2 in.).
+// ============================================================================
+const FIELD = {
+  POLLEN_R: 1.4, NECTAR_R: 1.8,                     // 2.8 in. POLLEN, 3.6 in. NECTAR
+  FRAME_X: 24.73, FRAME_HALF_DEPTH: 19.5,           // HIVE frame: 49.46 in. wide, 38.95 in. deep; robots drive under the HIVES
+  CELL_HALF_W: 10, CELL_HALF_D: 6,                  // CELL opening 20 in. wide, 12 in. deep
+  FLOWERS: [[-24, 72], [72, 24], [24, -72], [-72, -24]],
+  LOADING_ZONE: { RED: [-72, -61, 24, 47], BLUE: [61, 72, -47, -24] },   // xMin, xMax, yMin, yMax (23 x 11 in.)
+  GARDEN: { RED: [-72, -49, -72, -70], BLUE: [49, 72, 70, 72] },         // 23 x 2 in., opposite corners
+  START_UP: { RED: 'AUDIENCE', BLUE: 'FAR' },       // Figure 10-2
+  NECTAR_IN_AREA: 5,
+};
+const POINTS = { LEAVE: 3, PARK: 5, TIP: 20, IN_CELL: 2, GARDEN: 1 };
+// From a third-party rules summary (check at the practice field): 7 POLLEN don't tip, 8 do;
+// 3 NECTAR + 2 POLLEN don't, 3 NECTAR + 3 POLLEN do. Weights in POLLEN.
+const TIP = { POLLEN: 1, NECTAR: 1.8, THRESHOLD: 7.5 };
+// Your robot's share of a winning alliance score (team strategy, Roermond results)
+const BENCHMARKS = [[13, 'must-have'], [35, 'top-4 seed'], [70, 'Energizers level']];
+// ============================================================================
+// Drivetrain and odometry calibration. Names match the Pedro tuner output, so you can copy values
+// straight from pedro/Constants.java. Settings > Robot calibration overrides these in the browser.
+// ============================================================================
+const DRIVE_DEFAULTS = {
+  maxAchievableForwardVelocity: 60,   // in/s at full power forward (Foresight Tuner). Not tuned yet: guess
+  maxAchievableStrafeVelocity: 48,    // in/s at full power strafe (Foresight Tuner). Not tuned yet: guess
+  naturalForwardDeceleration: null,   // in/s² coasting / FLOAT (Foresight Tuner). Lower limit for braking
+  naturalStrafeDeceleration: null,    // in/s² coasting / FLOAT (Foresight Tuner)
+  brakeDeceleration: 180,             // in/s² when the sticks are released (BRAKE). Guess: measure it
+  accelerationTime: 0.35,             // s from standstill to full speed. Guess
+  maxTurnRate: 300,                   // deg/s at full turn power. Guess
+  forwardTicksToInches: 0.0020144555737033826, // TwoWheelConfig, Two Wheel Tuner 2026-11-07
+  strafeTicksToInches: 0.003571875173051589,   // TwoWheelConfig, Two Wheel Tuner 2026-11-07
+};
+const POD_INCHES_PER_TICK = Math.PI * 32 / 25.4 / 2000; // goBILDA 4-Bar pod: 32 mm wheel, 2000 ticks/rev
+const DRIVE = { ...DRIVE_DEFAULTS };
+try { Object.assign(DRIVE, JSON.parse(localStorage.getItem('biobuzz-sim-drive') || '{}')); } catch (e) {}
+
+const DRIFT = {
+  off:  { fwd: 1.00, str: 1.00, hdg: 0.000 },
+  low:  { fwd: 1.01, str: 1.04, hdg: 0.004 },
+  high: { fwd: 1.03, str: 1.15, hdg: 0.015 },
+};
+
+// ============================================================================
+// Settings (remembered in this browser)
+// ============================================================================
+const settings = { view: 'driver', length: '120', aim: 'LIMELIGHT', start: 'auto1', drift: 'low', helpers: '1' };
+try { Object.assign(settings, JSON.parse(localStorage.getItem('biobuzz-sim-settings') || '{}')); } catch (e) {}
+const optIds = { view: 'optView', length: 'optLength', aim: 'optAim', start: 'optStart', drift: 'optDrift', helpers: 'optHelpers' };
+for (const [k, id] of Object.entries(optIds)) {
+  const el = document.getElementById(id);
+  el.value = settings[k];
+  if (el.value !== settings[k]) settings[k] = el.value;
+  el.addEventListener('change', () => {
+    settings[k] = el.value;
+    try { localStorage.setItem('biobuzz-sim-settings', JSON.stringify(settings)); } catch (e) {}
+    applySettings(k);
+    el.blur();
+  });
+}
+function applySettings(changed) {
+  document.getElementById('aimNote').textContent = settings.aim === 'ODOMETRY'
+    ? 'Odometry aim: the turret points at the CELL picked with D-pad up/down, but auto-fire never passes ("goal not seen") because the real code needs a Limelight distance. Hold Cross to feed by hand.'
+    : 'Limelight aim: the camera on the turret finds the upward CELL of our HIVE by itself. D-pad up/down only matters in odometry mode.';
+  if (changed === 'start' || changed === 'length') { if (S.phase !== 'running') resetToInit(); }
+}
+
+// ============================================================================
+// Math helpers and ports of the Java helpers
+// ============================================================================
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+function wrap180(a) { a = a % 360; if (a > 180) a -= 360; if (a <= -180) a += 360; return a; }
+function randn() { let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// BIOBUZZ.java
+function buttonAxis(pos, neg) { return (pos ? 1 : 0) - (neg ? 1 : 0); }
+function drivePowers(forward, strafe, turn, scale) {
+  const den = Math.max(1, Math.abs(forward) + Math.abs(strafe) + Math.abs(turn));
+  return [
+    (forward + strafe + turn) / den * scale,   // front left
+    (forward - strafe - turn) / den * scale,   // front right
+    (forward - strafe + turn) / den * scale,   // back left
+    (forward + strafe - turn) / den * scale,   // back right
+  ];
+}
+function shotBlocker(blindSpot, aimErrorDeg, rpm, targetRpm, targetAgeSec, distanceIn) {
+  if (blindSpot) return "goal behind the turret's blind spot";
+  if (targetAgeSec > BIOBUZZ.MAX_TARGET_AGE_SEC) return 'goal not seen';
+  if (!shotInRange(distanceIn)) return `distance ${distanceIn.toFixed(0)} in outside shot table`;
+  if (aimErrorDeg > BIOBUZZ.AIM_TOLERANCE_DEG) return `aiming (${aimErrorDeg.toFixed(1)}°)`;
+  if (targetRpm <= 0 || Math.abs(rpm - targetRpm) > BIOBUZZ.RPM_TOLERANCE * targetRpm) return `rpm ${rpm.toFixed(0)}/${targetRpm.toFixed(0)}`;
+  return null;
+}
+
+// ShotTable.java
+function interpolate(rows, col, d) {
+  if (!rows.length) return 0;
+  if (d <= rows[0][0]) return rows[0][col];
+  for (let i = 1; i < rows.length; i++) {
+    if (d <= rows[i][0]) { const a = rows[i - 1], b = rows[i]; const f = (d - a[0]) / (b[0] - a[0]); return a[col] + f * (b[col] - a[col]); }
+  }
+  return rows[rows.length - 1][col];
+}
+const shotRpm = d => interpolate(SHOT_TABLE.ROWS, 1, d);
+const flightTime = d => interpolate(SHOT_TABLE.ROWS, 2, d);
+function shotInRange(d) {
+  const r = SHOT_TABLE.ROWS;
+  if (!r.length || d <= 0) return false;
+  return d >= r[0][0] - SHOT_TABLE.INRANGE_MARGIN_IN && d <= r[r.length - 1][0] + SHOT_TABLE.INRANGE_MARGIN_IN;
+}
+// Simulator only: how far a ball flies at a flywheel RPM (the shot table read backwards, extrapolated).
+function distanceForRpm(rpm) {
+  const r = SHOT_TABLE.ROWS, n = r.length;
+  let i = 1;
+  while (i < n - 1 && rpm > r[i][1]) i++;
+  const a = r[i - 1], b = r[i];
+  return a[0] + (rpm - a[1]) * (b[0] - a[0]) / (b[1] - a[1]);
+}
+
+// TurretController.java
+const turretSign = () => TURRET.POSITIVE_IS_CLOCKWISE ? 1 : -1;
+const clampAngle = a => clamp(a, TURRET.MIN_ANGLE, TURRET.MAX_ANGLE);
+function reachableAngle(desired, current) {
+  const w = wrap180(desired); let best = NaN;
+  for (let k = -1; k <= 1; k++) {
+    const c = w + 360 * k;
+    if (c >= TURRET.MIN_ANGLE && c <= TURRET.MAX_ANGLE && (isNaN(best) || Math.abs(c - current) < Math.abs(best - current))) best = c;
+  }
+  if (!isNaN(best)) return best;
+  const toMax = Math.abs(wrap180(w - TURRET.MAX_ANGLE)), toMin = Math.abs(wrap180(w - TURRET.MIN_ANGLE));
+  return toMax <= toMin ? TURRET.MAX_ANGLE : TURRET.MIN_ANGLE;
+}
+function turretAngleToPoint(rx, ry, hDeg, gx, gy) {
+  const bearing = Math.atan2(gy - ry, gx - rx) * R2D;
+  return wrap180(turretSign() * (hDeg - bearing));
+}
+const fieldBearing = (turretAngle, tx, heading) => wrap180(turretAngle + turretSign() * tx - turretSign() * heading);
+const turretAngleFor = (bearing, heading) => wrap180(bearing + turretSign() * heading);
+function leadSolution(turretAngle, distanceIn, vF, vL, gain) {
+  const s = turretSign();
+  const phi = -s * turretAngle * D2R;
+  const gx = distanceIn * Math.cos(phi), gy = distanceIn * Math.sin(phi);
+  let vx = gx, vy = gy, d = distanceIn;
+  for (let i = 0; i < 3; i++) { const t = flightTime(d); vx = gx - gain * vF * t; vy = gy - gain * vL * t; d = Math.hypot(vx, vy); }
+  const angle = -s * Math.atan2(vy, vx) * R2D;
+  return [turretAngle + wrap180(angle - turretAngle), d];
+}
+const manualVelocity = (dir, cur) => dir > 0 && cur < TURRET.MAX_ANGLE ? TURRET.MANUAL_SPEED_DEG_PER_SEC
+  : dir < 0 && cur > TURRET.MIN_ANGLE ? -TURRET.MANUAL_SPEED_DEG_PER_SEC : 0;
+
+// FieldAim.java
+function fieldGoal(alliance, cell) {
+  return [alliance === 'RED' ? -FIELD_AIM.HIVE_X : FIELD_AIM.HIVE_X, cell === 'FAR' ? FIELD_AIM.CELL_Y : -FIELD_AIM.CELL_Y];
+}
+function startPose(alliance) {
+  const x = FIELD_AIM.HALF_FIELD - FIELD_AIM.ROBOT_HALF_LENGTH;
+  return alliance === 'RED' ? [-x, FIELD_AIM.START_Y, 0] : [x, FIELD_AIM.START_Y, 180];
+}
+function turretPosition(x, y, hDeg) {
+  const h = hDeg * D2R;
+  return [x + FIELD_AIM.TURRET_FORWARD_OFFSET * Math.cos(h), y + FIELD_AIM.TURRET_FORWARD_OFFSET * Math.sin(h)];
+}
+
+// ============================================================================
+// Simulation state
+// ============================================================================
+let S;
+function freshTurret() {
+  return {
+    angle: 0, rate: 0, cmd: { mode: 'pos', target: 0, power: TURRET.TURRET_MAX_POWER },
+    auto: false, manualTarget: 0, manualDir: 0, bearing: 0, aimTarget: 0,
+    goalDist: 0, shotDist: 0, commanded: 0, blind: false, lastFix: -1,
+    fieldAimValid: false, fieldAimAngle: 0, wasVisible: false, lostAt: 0,
+    searching: false, searchAngle: TURRET.SEARCH_INITIAL_ANGLE, searchCenter: 0, searchRight: true, dwelling: false, dwellAt: 0,
+    seeing: false,
+  };
+}
+function resetToInit() {
+  const prevAlliance = S ? S.alliance : 'ANY';
+  S = {
+    phase: 'init', alliance: prevAlliance, now: 0, matchTime: 0,
+    robot: { x: 0, y: 0, h: 0, vx: 0, vy: 0, w: 0 },
+    wheels: [0, 0, 0, 0],
+    odo: { x: 0, y: 0, h: 0, hErr: 0 }, lastOdo: null, lastOdoT: 0, vF: 0, vL: 0, odoOn: true,
+    t: freshTurret(),
+    fly: { target: 0, rpm: 0, measured: 0 },
+    intake: 0, transfer: 0, feed: 0, load: [], ejectT: 0, flowerT: 0,
+    autoAim: false, lastTriangle: false, spinRpm: FLYWHEEL.DEFAULT_RPM, cell: 'FAR',
+    hive: { RED: { up: FIELD.START_UP.RED, contents: ['R', 'R', 'R'] }, BLUE: { up: FIELD.START_UP.BLUE, contents: ['B', 'B', 'B'] } },
+    flowers: FIELD.FLOWERS.map(([x, y]) => ({ x, y, pollen: 4 })),
+    nectarLeft: FIELD.NECTAR_IN_AREA, nectarQueue: [], nectarAll: false,
+    balls: [], flying: [], popups: [],
+    autoPts: 0, tips: 0, made: 0, shots: 0, trips: [], tripStart: 0, telemetry: [], shotStatus: null,
+    shareHeld: 0, lastShare: false, banner: null,
+  };
+  stageField();
+}
+// Competition Manual 10.3.1. No partner or opponents: their pre-loads go in the LOADING ZONES (no-show rule).
+function stageField() {
+  const P = FIELD.POLLEN_R;
+  for (let i = 0; i < 4; i++) {
+    S.balls.push(ball('P', -72 + P + 0.1 + i * 2.85, -72 + P + 0.1));   // red GARDEN, from the red corner
+    S.balls.push(ball('P', 72 - P - 0.1 - i * 2.85, 72 - P - 0.1));     // blue GARDEN, from the blue corner
+  }
+  const lz = (al, n) => {
+    const z = FIELD.LOADING_ZONE[al], x = al === 'RED' ? z[0] + P + 0.1 : z[1] - P - 0.1, cy = (z[2] + z[3]) / 2;
+    for (let i = 0; i < n; i++) S.balls.push(ball('P', x + (i >= 4 ? (al === 'RED' ? 2.9 : -2.9) : 0), cy + ((i % 4) - 1.5) * 2.9));
+  };
+  if (S.alliance === 'ANY') return;
+  const opp = S.alliance === 'RED' ? 'BLUE' : 'RED';
+  lz(S.alliance, 4); lz(opp, 8);
+  if (settings.start === 'auto1') {
+    // Our auto: 4 pre-loads fired, HIVE tipped once, robot parked in the LOADING ZONE.
+    const H = S.hive[S.alliance];
+    for (const t of [...H.contents, 'P', 'P', 'P', 'P']) spillBall(S.alliance, H.up, t);
+    H.contents = []; H.up = H.up === 'FAR' ? 'AUDIENCE' : 'FAR';
+    S.nectarLeft--; S.balls.push(ball(S.alliance[0], ...lzSpot(S.alliance)));
+    S.autoPts = POINTS.LEAVE + POINTS.PARK + POINTS.TIP;
+  } else S.load = ['P', 'P', 'P', 'P'];
+  placeAtStart();
+}
+function ball(type, x, y, vx = 0, vy = 0) { return { type, x, y, vx, vy, r: type === 'P' ? FIELD.POLLEN_R : FIELD.NECTAR_R }; }
+function lzSpot(al) { const z = FIELD.LOADING_ZONE[al]; return [rand(z[0] + 3, z[1] - 2), rand(z[2] + 3, z[3] - 3)]; }
+function spillBall(al, cell, type) {
+  const [gx, gy] = fieldGoal(al, cell), a = rand(0, 2 * Math.PI), sp = rand(8, 35);
+  S.balls.push(ball(type, gx + rand(-6, 6), gy + rand(-4, 4), Math.cos(a) * sp, Math.sin(a) * sp));
+}
+function startSpot() {
+  if (settings.start !== 'auto1') return startPose(S.alliance);
+  const z = FIELD.LOADING_ZONE[S.alliance], cy = (z[2] + z[3]) / 2;
+  return S.alliance === 'RED' ? [z[1] + 3, cy, 0] : [z[0] - 3, cy, 180]; // partly in the zone, clear of the pre-loads
+}
+function placeAtStart() {
+  const p = startSpot();
+  Object.assign(S.robot, { x: p[0], y: p[1], h: p[2], vx: 0, vy: 0, w: 0 });
+  Object.assign(S.odo, { x: p[0], y: p[1], h: p[2], hErr: 0 });
+  S.lastOdo = null;
+}
+// Things robots and balls bump into: the two HIVE frame triangles and the FLOWERS on the walls.
+function wallNormal(x, y) { return Math.abs(x) > Math.abs(y) ? [-Math.sign(x), 0] : [0, -Math.sign(y)]; }
+const OBSTACLES = [
+  ...[-1, 1].map(sx => ({ x: sx * FIELD.FRAME_X, y: 0, hw: 1, hh: FIELD.FRAME_HALF_DEPTH, a: 0 })),
+  ...FIELD.FLOWERS.map(([x, y]) => { const [nx, ny] = wallNormal(x, y); return { x: x + nx * 2.5, y: y + ny * 2.5, hw: nx ? 2.5 : 3, hh: nx ? 3 : 2.5, a: 0 }; }),
+];
+function obstacles() { return OBSTACLES; }
+
+// ============================================================================
+// Input: PS controller (standard mapping) + keyboard fallback
+// ============================================================================
+const keys = new Set();
+let tappedShare = false; // a quick Enter tap can fall between two frames
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  keys.add(e.code);
+  if (e.code === 'Enter' && !e.repeat) tappedShare = true;
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  unlockAudio();
+});
+addEventListener('keyup', e => keys.delete(e.code));
+addEventListener('blur', () => keys.clear());
+
+let padIndex = null, padNonStandard = false;
+addEventListener('gamepadconnected', e => { if (padIndex === null) padIndex = e.gamepad.index; });
+addEventListener('gamepaddisconnected', e => { if (padIndex === e.gamepad.index) padIndex = null; });
+
+function readGamepad() {
+  const g = {
+    left_stick_x: 0, left_stick_y: 0, right_stick_x: 0, right_stick_y: 0, left_trigger: 0, right_trigger: 0,
+    cross: false, circle: false, square: false, triangle: false, left_bumper: false, right_bumper: false,
+    dpad_up: false, dpad_down: false, dpad_left: false, dpad_right: false, options: false, share: false,
+  };
+  let pad = null;
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  if (padIndex !== null && pads[padIndex]) pad = pads[padIndex];
+  if (!pad) for (const p of pads) if (p && p.connected) { pad = p; padIndex = p.index; break; }
+  if (pad) {
+    padNonStandard = pad.mapping !== 'standard';
+    const ax = i => { const v = pad.axes[i] || 0; return Math.abs(v) < 0.06 ? 0 : v; };
+    const bt = i => !!(pad.buttons[i] && pad.buttons[i].pressed);
+    const bv = i => pad.buttons[i] ? pad.buttons[i].value : 0;
+    Object.assign(g, {
+      left_stick_x: ax(0), left_stick_y: ax(1), right_stick_x: ax(2), right_stick_y: ax(3),
+      cross: bt(0), circle: bt(1), square: bt(2), triangle: bt(3), left_bumper: bt(4), right_bumper: bt(5),
+      left_trigger: bv(6), right_trigger: bv(7), share: bt(8) || bt(16) || bt(17), options: bt(9),
+      dpad_up: bt(12), dpad_down: bt(13), dpad_left: bt(14), dpad_right: bt(15),
+    });
+  }
+  // Keyboard (adds to the controller)
+  const k = c => keys.has(c);
+  g.left_stick_x = clamp(g.left_stick_x + (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0), -1, 1);
+  g.left_stick_y = clamp(g.left_stick_y + (k('KeyS') ? 1 : 0) - (k('KeyW') ? 1 : 0), -1, 1);
+  g.right_stick_x = clamp(g.right_stick_x + (k('ArrowRight') ? 1 : 0) - (k('ArrowLeft') ? 1 : 0), -1, 1);
+  g.right_trigger = Math.max(g.right_trigger, k('KeyI') ? 1 : 0);
+  g.left_trigger = Math.max(g.left_trigger, k('KeyK') ? 1 : 0);
+  g.left_bumper ||= k('KeyQ'); g.right_bumper ||= k('KeyE');
+  g.triangle ||= k('KeyR'); g.square ||= k('KeyF') || k('Space');
+  g.cross ||= k('KeyZ'); g.circle ||= k('KeyX');
+  g.dpad_up ||= k('ArrowUp'); g.dpad_down ||= k('ArrowDown');
+  g.options ||= k('KeyO'); g.share ||= k('Enter') || tappedShare;
+  tappedShare = false;
+  return { g, pad };
+}
+
+// ============================================================================
+// Robot code: the BIOBUZZ OpMode loop, ported line by line
+// ============================================================================
+function initLoop(gp) {
+  // BiobuzzRobot.selectAlliance
+  let changed = false;
+  if (gp.circle && S.alliance !== 'RED') { S.alliance = 'RED'; changed = true; }
+  if (gp.cross && S.alliance !== 'BLUE') { S.alliance = 'BLUE'; changed = true; }
+  if (changed) resetToInit();
+  const tl = [];
+  tl.push(`Alliance: ${S.alliance}  (Circle = RED, Cross = BLUE)`);
+  tl.push('Turret home = current position. Center it before INIT.');
+  if (settings.aim === 'ODOMETRY') tl.push('Start: back against our alliance wall, centred, facing the HIVE.');
+  tl.push('Bumpers: turret | Triangle: auto-aim | Square: shoot / flywheel');
+  tl.push('');
+  tl.push(S.alliance === 'ANY' ? '[sim] Pick an alliance, then press Share / Enter to start.' : '[sim] Press Share / Enter to start.');
+  S.telemetry = tl;
+}
+
+function opModeLoop(gp, dt) {
+  const tl = [];
+  S.tl = tl;
+  // robot.drive(-gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x, DRIVE_SCALE)
+  S.wheels = drivePowers(-gp.left_stick_y, gp.left_stick_x, gp.right_stick_x, BIOBUZZ.DRIVE_SCALE);
+  S.intake = ROBOT.INTAKE_POWER * (gp.right_trigger - gp.left_trigger);
+
+  if (gp.dpad_up) S.cell = 'FAR';
+  if (gp.dpad_down) S.cell = 'AUDIENCE';
+  if (gp.options) resetPoseToStart();
+  updateFieldAim(updateOdometry(), S.cell);
+
+  if (gp.triangle && !S.lastTriangle) S.autoAim = !S.autoAim;
+  S.lastTriangle = gp.triangle;
+  turretEnableAutoAim(S.autoAim);
+  if (!S.autoAim) S.t.manualDir = Math.sign(buttonAxis(gp.right_bumper, gp.left_bumper));
+  turretUpdate();
+
+  const manualTransfer = ROBOT.TRANSFER_POWER * buttonAxis(gp.cross, gp.circle);
+  S.shotStatus = null;
+  if (S.autoAim) {
+    const distance = S.t.shotDist;
+    if (distance > 0) S.spinRpm = shotRpm(distance);
+    setFlywheel(S.spinRpm);
+    const blocker = shotBlocker(S.t.blind, Math.abs(S.t.commanded - S.t.angle), S.fly.measured, S.spinRpm,
+      S.t.lastFix < 0 ? Infinity : S.now - S.t.lastFix, distance);
+    const fire = gp.square && blocker === null;
+    S.transfer = gp.square ? (fire ? ROBOT.TRANSFER_POWER : 0) : manualTransfer;
+    S.shotStatus = blocker === null ? 'READY' : 'WAIT: ' + blocker;
+    tl.push('Shot: ' + S.shotStatus);
+  } else {
+    setFlywheel(gp.square ? FLYWHEEL.DEFAULT_RPM : 0);
+    S.transfer = manualTransfer;
+  }
+  tl.push(`Auto-aim: ${S.autoAim ? 'ON' : 'OFF'}`);
+  tl.push(`Flywheel RPM (target/measured): ${S.fly.target.toFixed(0)} / ${S.fly.measured.toFixed(0)}`);
+  tl.push('Battery: 12.8 V');
+  S.telemetry = tl;
+}
+
+function setFlywheel(rpm) { S.fly.target = clamp(rpm, 0, FLYWHEEL.MAX_RPM); }
+
+function resetPoseToStart() {
+  if (S.alliance === 'ANY') return;
+  const p = startPose(S.alliance);
+  Object.assign(S.odo, { x: p[0], y: p[1], h: p[2], hErr: 0 });
+  S.lastOdo = null;
+}
+
+// BiobuzzRobot.updateOdometry: pose from the (drifting) odometry, robot-frame velocity for the shot lead.
+function updateOdometry() {
+  const pose = { x: S.odo.x, y: S.odo.y, h: S.odo.h };
+  if (S.lastOdo) {
+    const dt = S.now - S.lastOdoT;
+    if (dt > 0.005) {
+      const dx = pose.x - S.lastOdo.x, dy = pose.y - S.lastOdo.y, h = pose.h * D2R;
+      const c = Math.cos(h), s = Math.sin(h);
+      const vF = (dx * c + dy * s) / dt, vL = (-dx * s + dy * c) / dt;
+      S.vF += ROBOT.VELOCITY_FILTER * (vF - S.vF);
+      S.vL += ROBOT.VELOCITY_FILTER * (vL - S.vL);
+      S.lastOdo = pose; S.lastOdoT = S.now;
+    }
+  } else { S.lastOdo = pose; S.lastOdoT = S.now; }
+  return pose;
+}
+
+function updateFieldAim(pose, cell) {
+  S.tl.push(`Robot Pose (in, deg): x ${pose.x.toFixed(1)}  y ${pose.y.toFixed(1)}  h ${wrap180(pose.h).toFixed(1)}`);
+  if (S.alliance === 'ANY') { S.t.fieldAimValid = false; return; }
+  const goal = fieldGoal(S.alliance, cell);
+  const from = turretPosition(pose.x, pose.y, pose.h);
+  const leadHeading = pose.h + S.robot.w * TURRET.GYRO_LEAD_SEC;
+  S.t.fieldAimAngle = turretAngleToPoint(from[0], from[1], leadHeading, goal[0], goal[1]);
+  S.t.fieldAimValid = true;
+  if (settings.aim === 'ODOMETRY') {
+    S.tl.push(`Aim Cell / Distance: ${cell} / ${Math.hypot(goal[0] - from[0], goal[1] - from[1]).toFixed(0)} in`);
+  }
+}
+
+// ---- TurretController ----
+function turretEnableAutoAim(enable) {
+  const T = S.t;
+  if (T.auto && !enable) { T.manualTarget = T.angle; T.searching = false; }
+  if (!T.auto && enable) { T.wasVisible = false; T.lastFix = -1; T.goalDist = 0; T.shotDist = 0; }
+  T.auto = enable;
+}
+function commandTurret(desired) {
+  const T = S.t;
+  T.commanded = reachableAngle(desired, T.angle);
+  T.blind = Math.abs(wrap180(T.commanded - desired)) > 0.5;
+  return T.commanded;
+}
+function runToPosition(target, power) { S.t.cmd = { mode: 'pos', target, power }; }
+function turretUpdate() {
+  const T = S.t;
+  T.seeing = false;
+  if (T.auto && settings.aim === 'ODOMETRY') {
+    if (T.fieldAimValid) { T.aimTarget = T.fieldAimAngle; runToPosition(commandTurret(T.fieldAimAngle), TURRET.AIM_MAX_POWER); }
+    else runToPosition(clampAngle(T.manualTarget), TURRET.TURRET_MAX_POWER);
+  } else if (T.auto) {
+    updateAutoAim();
+  } else {
+    const v = manualVelocity(T.manualDir, T.angle);
+    if (v !== 0) { T.cmd = { mode: 'vel', v }; T.manualTarget = clampAngle(T.angle); }
+    else runToPosition(clampAngle(T.manualTarget), TURRET.TURRET_MAX_POWER);
+  }
+}
+function aimAtBearing(heading) {
+  const T = S.t;
+  const leadHeading = heading + S.robot.w * TURRET.GYRO_LEAD_SEC;
+  const goalAngle = turretAngleFor(T.bearing, leadHeading);
+  if (T.goalDist > 0) {
+    const lead = leadSolution(goalAngle, T.goalDist, S.vF, S.vL, TURRET.LEAD_GAIN);
+    T.aimTarget = lead[0]; T.shotDist = lead[1];
+  } else { T.aimTarget = goalAngle; T.shotDist = 0; }
+  runToPosition(commandTurret(T.aimTarget), TURRET.AIM_MAX_POWER);
+}
+// What the Limelight on the turret sees: the upward CELL of our HIVE, or nothing.
+function limelightFix() {
+  if (S.alliance === 'ANY') return null;
+  const goal = fieldGoal(S.alliance, S.hive[S.alliance].up);
+  const [tx0, ty0] = turretPosition(S.robot.x, S.robot.y, S.robot.h);
+  const dist = Math.hypot(goal[0] - tx0, goal[1] - ty0);
+  const camDir = S.robot.h - turretSign() * S.t.angle; // CCW field angle the camera faces
+  const bearing = Math.atan2(goal[1] - ty0, goal[0] - tx0) * R2D;
+  const tx = wrap180(camDir - bearing); // positive = target right of centre
+  if (Math.abs(tx) > SIM.camHalfFovDeg || dist < SIM.camMinDist || dist > SIM.camMaxDist) return null;
+  return { tx: tx + randn() * 0.15, dist: dist + randn() * 0.4 };
+}
+function updateAutoAim() {
+  const T = S.t, heading = S.robot.h; // IMU heading is the true heading
+  const fix = limelightFix();
+  if (fix) {
+    T.seeing = true;
+    if (T.searching) { T.searching = false; T.searchAngle = TURRET.SEARCH_INITIAL_ANGLE; }
+    const measured = fieldBearing(T.angle, fix.tx, heading);
+    T.bearing = T.wasVisible ? wrap180(T.bearing + TURRET.VISION_FILTER * wrap180(measured - T.bearing)) : measured;
+    T.wasVisible = true; T.lostAt = S.now;
+    aimAtBearing(heading);
+    T.goalDist = fix.dist; T.lastFix = S.now;
+  } else if (T.wasVisible && S.now - T.lostAt < TURRET.TARGET_LOST_TIMEOUT && TURRET.IMU_SEARCH_ENABLED) {
+    aimAtBearing(heading);
+    T.searching = false;
+  } else {
+    T.wasVisible = false;
+    if (!T.searching) {
+      T.searching = true; T.searchCenter = T.angle; T.searchAngle = TURRET.SEARCH_INITIAL_ANGLE; T.searchRight = true; T.dwelling = false;
+    }
+    if (T.dwelling) {
+      if (S.now - T.dwellAt >= TURRET.SEARCH_DWELL_TIME) T.dwelling = false; else return;
+    }
+    let target, move = false;
+    if (T.searchRight) {
+      target = clampAngle(T.searchCenter + T.searchAngle);
+      if (T.angle >= target - 2) { T.searchRight = false; T.dwelling = true; T.dwellAt = S.now; } else move = true;
+    } else {
+      target = clampAngle(T.searchCenter - T.searchAngle);
+      if (T.angle <= target + 2) {
+        T.searchRight = true; T.dwelling = true; T.dwellAt = S.now;
+        T.searchAngle = Math.min(T.searchAngle + TURRET.SEARCH_ANGLE_INCREMENT, TURRET.SEARCH_MAX_ANGLE);
+      } else move = true;
+    }
+    if (move) runToPosition(target, TURRET.SEARCH_POWER);
+  }
+}
+
+function stopAll() {
+  S.wheels = [0, 0, 0, 0]; S.intake = 0; S.transfer = 0; setFlywheel(0);
+  S.t.cmd = { mode: 'vel', v: 0 };
+}
+
+// ============================================================================
+// Physics
+// ============================================================================
+function obbCorners(o) {
+  const c = Math.cos(o.a), s = Math.sin(o.a);
+  return [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([i, j]) => [o.x + c * i * o.hw - s * j * o.hh, o.y + s * i * o.hw + c * j * o.hh]);
+}
+// Minimal translation pushing OBB a out of OBB b (or null).
+function obbPush(a, b) {
+  const ca = obbCorners(a), cb = obbCorners(b);
+  const axes = [[Math.cos(a.a), Math.sin(a.a)], [-Math.sin(a.a), Math.cos(a.a)], [Math.cos(b.a), Math.sin(b.a)], [-Math.sin(b.a), Math.cos(b.a)]];
+  let best = Infinity, bestAxis = null;
+  for (const ax of axes) {
+    const pa = ca.map(p => p[0] * ax[0] + p[1] * ax[1]), pb = cb.map(p => p[0] * ax[0] + p[1] * ax[1]);
+    const o = Math.min(Math.max(...pa), Math.max(...pb)) - Math.max(Math.min(...pa), Math.min(...pb));
+    if (o <= 0) return null;
+    if (o < best) {
+      best = o;
+      const dir = (a.x - b.x) * ax[0] + (a.y - b.y) * ax[1] >= 0 ? 1 : -1;
+      bestAxis = [ax[0] * dir, ax[1] * dir];
+    }
+  }
+  return [bestAxis[0] * best, bestAxis[1] * best];
+}
+// Push a circle out of an OBB. Returns normal or null.
+function circleObb(b, o, r) {
+  const c = Math.cos(o.a), s = Math.sin(o.a);
+  const lx = (b.x - o.x) * c + (b.y - o.y) * s, ly = -(b.x - o.x) * s + (b.y - o.y) * c;
+  const qx = clamp(lx, -o.hw, o.hw), qy = clamp(ly, -o.hh, o.hh);
+  let dx = lx - qx, dy = ly - qy, d = Math.hypot(dx, dy);
+  if (d >= r) return null;
+  let nx, ny, pen;
+  if (d > 1e-6) { nx = dx / d; ny = dy / d; pen = r - d; }
+  else { // centre inside the box: push out the nearest side
+    const px = o.hw - Math.abs(lx), py = o.hh - Math.abs(ly);
+    if (px < py) { nx = Math.sign(lx) || 1; ny = 0; pen = px + r; } else { nx = 0; ny = Math.sign(ly) || 1; pen = py + r; }
+  }
+  const wx = nx * c - ny * s, wy = nx * s + ny * c;
+  b.x += wx * pen; b.y += wy * pen;
+  return [wx, wy];
+}
+function robotObb() { return { x: S.robot.x, y: S.robot.y, hw: SIM.robotHalf, hh: SIM.robotHalf, a: S.robot.h * D2R }; }
+
+function physics(dt) {
+  const R = S.robot, p = S.wheels;
+  // Wheel powers back to chassis motion (normalisation and scale already applied by drivePowers).
+  // Wheel power is taken as proportional to wheel speed; full power = the Foresight max velocity.
+  const D = DRIVE;
+  const vf = (p[0] + p[1] + p[2] + p[3]) / 4 * D.maxAchievableForwardVelocity;
+  const vs = (p[0] - p[1] - p[2] + p[3]) / 4 * D.maxAchievableStrafeVelocity; // + = right
+  const wt = (p[0] - p[1] + p[2] - p[3]) / 4 * D.maxTurnRate;                 // + = clockwise
+  const h = R.h * D2R, c = Math.cos(h), s = Math.sin(h);
+  const b = brakeDecels();
+  // Speed up and slow down in the robot frame, so momentum carries through turns.
+  let cf = R.vx * c + R.vy * s, cr = R.vx * s - R.vy * c;
+  cf = approach(cf, vf, D.maxAchievableForwardVelocity / D.accelerationTime, b.forward, dt);
+  cr = approach(cr, vs, D.maxAchievableStrafeVelocity / D.accelerationTime, b.strafe, dt);
+  const turnAcc = D.maxTurnRate / D.accelerationTime;
+  R.w = approach(R.w, -wt, turnAcc, turnAcc * b.forward / (D.maxAchievableForwardVelocity / D.accelerationTime), dt);
+  R.vx = cf * c + cr * s; R.vy = cf * s - cr * c;
+  const ox = R.x, oy = R.y, oh = R.h;
+  R.x += R.vx * dt; R.y += R.vy * dt; R.h += R.w * dt;
+
+  // Walls and HIVEs
+  for (let iter = 0; iter < 2; iter++) {
+    const cs = obbCorners(robotObb());
+    let px = 0, py = 0;
+    for (const [x, y] of cs) {
+      if (x > 72) px = Math.min(px, 72 - x); if (x < -72) px = Math.max(px, -72 - x);
+      if (y > 72) py = Math.min(py, 72 - y); if (y < -72) py = Math.max(py, -72 - y);
+    }
+    if (px) { R.x += px; R.vx = 0; }
+    if (py) { R.y += py; R.vy = 0; }
+    for (const hv of obstacles()) {
+      const m = obbPush(robotObb(), hv);
+      if (m) {
+        R.x += m[0]; R.y += m[1];
+        const n = Math.hypot(m[0], m[1]), nx = m[0] / n, ny = m[1] / n, vn = R.vx * nx + R.vy * ny;
+        if (vn < 0) { R.vx -= vn * nx; R.vy -= vn * ny; }
+      }
+    }
+  }
+
+  // Odometry follows the real motion, with pod scale errors and IMU drift.
+  const dr = settings.drift === 'config' ? configDrift() : DRIFT[settings.drift];
+  const mx = R.x - ox, my = R.y - oy, dh = R.h - oh;
+  const fwd = mx * c + my * s, left = -mx * s + my * c;
+  S.odo.hErr += dh * dr.hdg + Math.hypot(mx, my) * dr.hdg * 0.05 * randn();
+  S.odo.h = R.h + S.odo.hErr;
+  const oh2 = S.odo.h * D2R, oc = Math.cos(oh2), os = Math.sin(oh2);
+  const f2 = fwd * dr.fwd, l2 = left * dr.str;
+  S.odo.x += f2 * oc - l2 * os; S.odo.y += f2 * os + l2 * oc;
+
+  // Turret motor
+  const T = S.t;
+  let want;
+  if (T.cmd.mode === 'vel') want = T.cmd.v;
+  else want = clamp(SIM.turretGain * (T.cmd.target - T.angle), -T.cmd.power * SIM.turretFullSpeed, T.cmd.power * SIM.turretFullSpeed);
+  T.rate += (want - T.rate) * (1 - Math.exp(-dt / 0.04));
+  T.angle = clamp(T.angle + T.rate * dt, -180, 120); // cables stop it here
+
+  // Flywheel (PIDF to target, FLOAT coast at 0)
+  const F = S.fly;
+  if (F.target > 0) F.rpm += (F.target - F.rpm) * (1 - Math.exp(-dt / SIM.flySpinUpTau));
+  else F.rpm *= Math.exp(-dt / SIM.flyCoastTau);
+  F.measured = F.rpm < 5 ? 0 : F.rpm + randn() * SIM.rpmNoise;
+
+  // Transfer feeds balls into the flywheel
+  if (S.load.length > 0 && S.transfer > 0) {
+    S.feed += S.transfer * dt / SIM.feedTimeFullPower;
+    if (S.feed >= 1) { S.feed = 0; launch(); }
+  } else S.feed = S.load.length > 0 ? Math.max(0, S.feed + Math.min(0, S.transfer) * dt / SIM.feedTimeFullPower) : 0;
+
+  // Intake reversed spits balls out the front
+  if (S.intake < -0.05 && S.load.length > 0) {
+    S.ejectT += dt * (-S.intake / ROBOT.INTAKE_POWER);
+    if (S.ejectT > 0.35) {
+      S.ejectT = 0;
+      const t = S.load.pop(), d = SIM.robotHalf + FIELD.POLLEN_R + 1;
+      S.balls.push(ball(t, R.x + c * d, R.y + s * d, R.vx + c * 35 * -S.intake, R.vy + s * 35 * -S.intake));
+    }
+  } else S.ejectT = 0;
+
+  // Intake against the bottom of a FLOWER pulls its POLLEN out, one at a time
+  S.flowerT = Math.max(0, S.flowerT - dt);
+  if (S.intake > 0.05 && S.load.length < SIM.capacity && S.flowerT === 0) {
+    for (const f of S.flowers) {
+      if (!f.pollen) continue;
+      const [nx, ny] = wallNormal(f.x, f.y), px = f.x + nx * 6.5, py = f.y + ny * 6.5;
+      const lx = (px - R.x) * c + (py - R.y) * s, ly = -(px - R.x) * s + (py - R.y) * c;
+      if (lx > SIM.robotHalf - 2 && lx < SIM.robotHalf + 3 && Math.abs(ly) < 7.5) { f.pollen--; S.load.push('P'); S.flowerT = 0.3; break; }
+    }
+  }
+
+  ballPhysics(dt);
+}
+
+// Move a speed toward its target: accelerate at acc, slow down or reverse at dec.
+function approach(cur, target, acc, dec, dt) {
+  const speedingUp = Math.abs(target) > Math.abs(cur) && (cur === 0 || Math.sign(cur) === Math.sign(target));
+  const step = (speedingUp ? acc : dec) * dt;
+  return Math.abs(target - cur) <= step ? target : cur + Math.sign(target - cur) * step;
+}
+function brakeDecels() {
+  const nf = DRIVE.naturalForwardDeceleration, ns = DRIVE.naturalStrafeDeceleration;
+  const forward = Math.max(DRIVE.brakeDeceleration, nf || 0);
+  const ratio = nf > 0 && ns > 0 ? ns / nf : DRIVE.maxAchievableStrafeVelocity / DRIVE.maxAchievableForwardVelocity;
+  return { forward, strafe: Math.max(forward * ratio, ns || 0) };
+}
+function configDrift() {
+  return { fwd: DRIVE.forwardTicksToInches / POD_INCHES_PER_TICK, str: DRIVE.strafeTicksToInches / POD_INCHES_PER_TICK, hdg: 0.002 };
+}
+
+function launch() {
+  const R = S.robot, F = S.fly;
+  const type = S.load.shift(); S.shots++;
+  if (!S.load.length && S.phase === 'running') { S.trips.push(S.matchTime - S.tripStart); S.tripStart = S.matchTime; }
+  let dist, t;
+  if (F.rpm < 900) { dist = 4 + F.rpm / 900 * 14; t = 0.25; }
+  else { dist = Math.max(10, distanceForRpm(F.rpm)); t = flightTime(dist); }
+  dist += randn() * SIM.shotSpreadIn;
+  const dir = (R.h - turretSign() * S.t.angle + randn() * SIM.shotSpreadDeg) * D2R;
+  const sp = dist / t;
+  const [x0, y0] = turretPosition(R.x, R.y, R.h);
+  S.flying.push({ type, x0, y0, vx: R.vx + sp * Math.cos(dir), vy: R.vy + sp * Math.sin(dir), T: t, age: 0, peak: F.rpm < 900 ? 4 : 40 });
+  F.rpm *= 1 - SIM.shotRpmDrop;
+}
+
+function ballPhysics(dt) {
+  const R = S.robot, ro = robotObb();
+  const c = Math.cos(ro.a), s = Math.sin(ro.a);
+  const hv = obstacles();
+  for (let i = S.balls.length - 1; i >= 0; i--) {
+    const b = S.balls[i], r = b.r;
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    const fr = Math.exp(-dt * 1.8); b.vx *= fr; b.vy *= fr;
+    if (Math.hypot(b.vx, b.vy) < 0.5) { b.vx = 0; b.vy = 0; }
+    // Intake: the front face pulls POLLEN in while the intake runs forward (our robot leaves NECTAR alone)
+    const lx = (b.x - R.x) * c + (b.y - R.y) * s, ly = -(b.x - R.x) * s + (b.y - R.y) * c;
+    if (b.type === 'P' && S.intake > 0.05 && S.load.length < SIM.capacity && lx > SIM.robotHalf - 2 && lx < SIM.robotHalf + r + 2 && Math.abs(ly) < 7.5) {
+      S.balls.splice(i, 1); S.load.push('P'); continue;
+    }
+    const n = circleObb(b, ro, r);
+    if (n) {
+      // Velocity of the robot surface at the ball, then bounce off it
+      const rx = b.x - R.x, ry = b.y - R.y, w = R.w * D2R;
+      const svx = R.vx - w * ry, svy = R.vy + w * rx;
+      const rel = (b.vx - svx) * n[0] + (b.vy - svy) * n[1];
+      if (rel < 0) { b.vx -= 1.4 * rel * n[0]; b.vy -= 1.4 * rel * n[1]; }
+    }
+    for (const h of hv) {
+      const m = circleObb(b, h, r);
+      if (m) { const vn = b.vx * m[0] + b.vy * m[1]; if (vn < 0) { b.vx -= 1.5 * vn * m[0]; b.vy -= 1.5 * vn * m[1]; } }
+    }
+    if (b.x > 72 - r) { b.x = 72 - r; b.vx = -Math.abs(b.vx) * 0.5; }
+    if (b.x < -72 + r) { b.x = -72 + r; b.vx = Math.abs(b.vx) * 0.5; }
+    if (b.y > 72 - r) { b.y = 72 - r; b.vy = -Math.abs(b.vy) * 0.5; }
+    if (b.y < -72 + r) { b.y = -72 + r; b.vy = Math.abs(b.vy) * 0.5; }
+  }
+  // Ball against ball
+  const B = S.balls;
+  for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) {
+    const a = B[i], b = B[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+    const rr = a.r + b.r;
+    if (d > 0 && d < rr) {
+      const nx = dx / d, ny = dy / d, p = (rr - d) / 2;
+      a.x -= nx * p; a.y -= ny * p; b.x += nx * p; b.y += ny * p;
+      const rv = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+      if (rv < 0) { a.vx += rv * nx * 0.9; a.vy += rv * ny * 0.9; b.vx -= rv * nx * 0.9; b.vy -= rv * ny * 0.9; }
+    }
+  }
+  // Balls in the air
+  for (let i = S.flying.length - 1; i >= 0; i--) {
+    const f = S.flying[i];
+    f.age += dt;
+    if (f.age >= f.T) {
+      S.flying.splice(i, 1);
+      const x = f.x0 + f.vx * f.T, y = f.y0 + f.vy * f.T, r = f.type === 'P' ? FIELD.POLLEN_R : FIELD.NECTAR_R;
+      let into = null;
+      if (f.peak > 10) for (const al of ['RED', 'BLUE']) {
+        const [gx, gy] = fieldGoal(al, S.hive[al].up);
+        if (Math.abs(x - gx) <= FIELD.CELL_HALF_W - r && Math.abs(y - gy) <= FIELD.CELL_HALF_D - r) into = al;
+        if (al === S.alliance) S.lastLand = { dx: x - gx, dy: y - gy };
+      }
+      if (into) {
+        const H = S.hive[into];
+        H.contents.push(f.type);
+        if (into === S.alliance) { S.made++; beep(880, 0.06); }
+        const [gx, gy] = fieldGoal(into, H.up);
+        S.popups.push({ x: gx, y: gy, t: S.now, text: into === S.alliance ? '+2' : 'their CELL', miss: into !== S.alliance });
+        if (hiveWeight(H) >= TIP.THRESHOLD) tipHive(into);
+      } else {
+        S.balls.push(ball(f.type, clamp(x, -70, 70), clamp(y, -70, 70), f.vx * 0.15, f.vy * 0.15));
+        if (f.peak > 10) S.popups.push({ x, y, t: S.now, text: 'miss', miss: true });
+      }
+    }
+  }
+}
+function hiveWeight(H) { return H.contents.reduce((w, t) => w + (t === 'P' ? TIP.POLLEN : TIP.NECTAR), 0); }
+// The upward CELL drops, spills under itself, and the other CELL turns up.
+function tipHive(al) {
+  const H = S.hive[al];
+  for (const t of H.contents) spillBall(al, H.up, t);
+  H.contents = []; H.up = H.up === 'FAR' ? 'AUDIENCE' : 'FAR';
+  if (al !== S.alliance) return;
+  if (S.phase === 'running') S.tips++;
+  S.popups.push({ x: fieldGoal(al, H.up)[0], y: 0, t: S.now, text: 'TIP +20' });
+  S.banner = { text: `HIVE TIP +20 · ${H.up} CELL is up now`, t: S.now };
+  beep(520, 0.15); rumble();
+  if (S.nectarLeft > 0 && !S.nectarAll) { S.nectarLeft--; S.nectarQueue.push(S.now + 3); } // G426: one NECTAR per TIP
+}
+// Live and end-of-match points for our robot
+function points() {
+  const al = S.alliance; if (al === 'ANY') return { total: 0 };
+  const H = S.hive[al], g = FIELD.GARDEN[al], z = FIELD.LOADING_ZONE[al];
+  const inCell = H.contents.length;
+  const garden = S.balls.filter(b => b.x + b.r > g[0] && b.x - b.r < g[1] && b.y + b.r > g[2] && b.y - b.r < g[3]).length;
+  const park = robotOverlapsZone(z); // at least partly in the LOADING ZONE
+  const p = { auto: S.autoPts, tips: S.tips * POINTS.TIP, cell: inCell * POINTS.IN_CELL, inCell, garden: garden * POINTS.GARDEN, park: park ? POINTS.PARK : 0 };
+  p.total = p.auto + p.tips + p.cell + p.garden + p.park;
+  return p;
+}
+function robotOverlapsZone(z) {
+  const zone = { x: (z[0] + z[1]) / 2, y: (z[2] + z[3]) / 2, hw: (z[1] - z[0]) / 2, hh: (z[3] - z[2]) / 2, a: 0 };
+  return !!obbPush(robotObb(), zone);
+}
+
+// ============================================================================
+// Match flow
+// ============================================================================
+function startMatch() {
+  if (S.phase !== 'init' || S.alliance === 'ANY') return;
+  S.phase = 'running'; S.matchTime = 0; S.tips = 0; S.made = 0; S.shots = 0; S.trips = []; S.tripStart = 0;
+  // OpMode start: auto-aim off, spinRpm = DEFAULT_RPM, cell FAR, resetPoseToStart()
+  S.autoAim = false; S.spinRpm = FLYWHEEL.DEFAULT_RPM; S.cell = 'FAR'; resetPoseToStart();
+  beep(660, 0.15);
+}
+function bestKey() { return `biobuzz-sim-best-${settings.length}-${settings.start}`; }
+function endMatch() {
+  S.phase = 'ended'; stopAll(); beep(330, 0.4);
+  S.final = points();
+  if (+settings.length) {
+    try { if (S.final.total > +(localStorage.getItem(bestKey()) || 0)) localStorage.setItem(bestKey(), S.final.total); } catch (e) {}
+  }
+}
+document.getElementById('btnStart').onclick = e => { e.target.blur(); unlockAudio(); startMatch(); };
+document.getElementById('btnReset').onclick = e => { e.target.blur(); resetToInit(); };
+
+// Audio and rumble (best effort)
+let audio = null;
+function unlockAudio() { try { if (!audio) audio = new AudioContext(); if (audio.state === 'suspended') audio.resume(); } catch (e) {} }
+addEventListener('pointerdown', unlockAudio);
+function beep(freq, dur) {
+  try {
+    if (!audio || audio.state !== 'running') return;
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.frequency.value = freq; g.gain.value = 0.06; o.connect(g); g.connect(audio.destination);
+    o.start(); g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + dur); o.stop(audio.currentTime + dur);
+  } catch (e) {}
+}
+let lastPad = null;
+function rumble() {
+  try { lastPad && lastPad.vibrationActuator && lastPad.vibrationActuator.playEffect('dual-rumble', { duration: 120, strongMagnitude: 0.3, weakMagnitude: 0.6 }); } catch (e) {}
+}
+
+// ============================================================================
+// Main loop
+// ============================================================================
+let lastFrame = performance.now();
+function frame(nowMs) {
+  const dt = Math.min(0.05, (nowMs - lastFrame) / 1000);
+  lastFrame = nowMs;
+  const { g, pad } = readGamepad();
+  lastPad = pad;
+  S.gp = g;
+
+  // Share: start from INIT, back to INIT from the end screen, hold 1 s to abort a match
+  if (g.share && !S.lastShare) {
+    if (S.phase === 'init') { unlockAudio(); startMatch(); }
+    else if (S.phase === 'ended') resetToInit();
+  }
+  if (S.phase === 'running' && g.share) { S.shareHeld += dt; if (S.shareHeld > 1) { resetToInit(); S.lastShare = true; } }
+  else S.shareHeld = 0;
+  S.lastShare = g.share;
+
+  if (S.phase === 'init') initLoop(g);
+  else if (S.phase === 'running') {
+    S.matchTime += dt;
+    opModeLoop(g, dt);
+    const len = +settings.length;
+    // Human player: NECTAR into our LOADING ZONE after each TIP, and all of it at 1:00 left (G426, G427)
+    if (len && !S.nectarAll && len - S.matchTime <= 60) {
+      S.nectarAll = true;
+      for (; S.nectarLeft > 0; S.nectarLeft--) S.nectarQueue.push(S.now + 1 + S.nectarQueue.length * 0.6);
+      S.banner = { text: '1:00 left: all NECTAR enters', t: S.now };
+    }
+    S.nectarQueue = S.nectarQueue.filter(t => { if (S.now < t) return true; S.balls.push(ball(S.alliance[0], ...lzSpot(S.alliance))); return false; });
+    if (len && S.matchTime >= len) endMatch();
+  } else stopAll();
+
+  const steps = 4;
+  for (let i = 0; i < steps; i++) { S.now += dt / steps; physics(dt / steps); }
+
+  render();
+  updatePanel(g, pad);
+  requestAnimationFrame(frame);
+}
+
+// ============================================================================
+// Rendering
+// ============================================================================
+const canvas = document.getElementById('field');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1, view = { s: 1, cx: 0, cy: 0, m: [1, 0, 0, -1] };
+function resize() {
+  DPR = window.devicePixelRatio || 1;
+  const r = canvas.getBoundingClientRect();
+  W = r.width; H = r.height;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+}
+addEventListener('resize', resize);
+
+function viewMatrix() {
+  // Maps field (x, y) to screen directions. Canvas y points down.
+  const v = settings.view === 'driver' && S.alliance !== 'ANY' ? S.alliance : 'AUDIENCE';
+  if (v === 'RED') return [0, -1, -1, 0];   // red wall (-X) at the bottom: +X up, -Y right
+  if (v === 'BLUE') return [0, 1, 1, 0];    // blue wall (+X) at the bottom: -X up, +Y right
+  return [1, 0, 0, -1];                     // audience: +X right, +Y up
+}
+function toScreen(x, y) {
+  const m = view.m;
+  return [view.cx + view.s * (m[0] * x + m[2] * y), view.cy + view.s * (m[1] * x + m[3] * y)];
+}
+function fieldTransform() {
+  const m = view.m, s = view.s * DPR;
+  ctx.setTransform(m[0] * s, m[1] * s, m[2] * s, m[3] * s, view.cx * DPR, view.cy * DPR);
+}
+function screenTransform() { ctx.setTransform(DPR, 0, 0, DPR, 0, 0); }
+
+const COLORS = { RED: '#e5484d', BLUE: '#3e7bfa', ANY: '#9aa0ab' };
+
+function render() {
+  if (!W) resize();
+  view.m = viewMatrix();
+  const size = Math.max(200, Math.min(W - 40, H - 150));
+  view.s = size / 160; view.cx = W / 2; view.cy = 66 + size / 2;
+
+  screenTransform();
+  ctx.fillStyle = '#0e1014'; ctx.fillRect(0, 0, W, H);
+
+  // Field
+  fieldTransform();
+  ctx.fillStyle = '#3a3f48'; ctx.fillRect(-72, -72, 144, 144);
+  ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 0.4;
+  for (let i = -48; i <= 48; i += 24) { line(i, -72, i, 72); line(-72, i, 72, i); }
+  // Walls
+  ctx.lineWidth = 2.5; ctx.strokeStyle = '#cfd3da'; ctx.strokeRect(-73.25, -73.25, 146.5, 146.5);
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = COLORS.RED; line(-73.25, -60, -73.25, 60);
+  ctx.strokeStyle = COLORS.BLUE; line(73.25, -60, 73.25, 60);
+  // LOADING ZONES and GARDENS
+  for (const al of ['RED', 'BLUE']) {
+    const z = FIELD.LOADING_ZONE[al], g = FIELD.GARDEN[al];
+    ctx.fillStyle = al === 'RED' ? 'rgba(229,72,77,.18)' : 'rgba(62,123,250,.18)';
+    ctx.fillRect(z[0], z[2], z[1] - z[0], z[3] - z[2]);
+    ctx.strokeStyle = COLORS[al]; ctx.lineWidth = 0.8; ctx.strokeRect(z[0], z[2], z[1] - z[0], z[3] - z[2]);
+    ctx.fillStyle = COLORS[al]; ctx.globalAlpha = 0.55; ctx.fillRect(g[0], g[2], g[1] - g[0], g[3] - g[2]); ctx.globalAlpha = 1;
+    // Start spot (match setup)
+    const p = startPose(al);
+    ctx.setLineDash([2, 2]); ctx.lineWidth = 0.5; ctx.strokeRect(p[0] - 9, p[1] - 9, 18, 18); ctx.setLineDash([]);
+  }
+  // FLOWERS with the POLLEN still inside
+  for (const f of S.flowers) {
+    const [nx, ny] = wallNormal(f.x, f.y), cx = f.x + nx * 2.5, cy = f.y + ny * 2.5;
+    ctx.fillStyle = '#6b5a2a'; ctx.strokeStyle = '#d9b84a'; ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.arc(cx, cy, 3, 0, 7); ctx.fill(); ctx.stroke();
+    for (let i = 0; i < f.pollen; i++) drawBall(cx + (i - 1.5) * 1.3 * (ny ? 1 : 0), cy + (i - 1.5) * 1.3 * (nx ? 1 : 0), 0.9, 0.95, 'P');
+  }
+  // HIVE frame triangles (robots can drive between them, under the HIVES)
+  ctx.fillStyle = '#9aa0ab';
+  for (const o of OBSTACLES.slice(0, 2)) ctx.fillRect(o.x - o.hw, o.y - o.hh, o.hw * 2, o.hh * 2);
+
+  // Balls on the ground
+  for (const b of S.balls) drawBall(b.x, b.y, b.r, 1, b.type);
+
+  const helpers = settings.helpers === '1';
+  if (helpers && S.alliance !== 'ANY' && settings.drift !== 'off' && S.phase !== 'init') drawOdoGhost();
+  drawRobot(helpers);
+  drawHives(); // overhead, drawn above the robot
+
+  // Balls in the air (shadow + raised ball)
+  for (const f of S.flying) {
+    const u = f.age / f.T, x = f.x0 + f.vx * f.age, y = f.y0 + f.vy * f.age;
+    const lift = Math.sin(Math.PI * u) * f.peak;
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    const r = f.type === 'P' ? FIELD.POLLEN_R : FIELD.NECTAR_R;
+    ctx.beginPath(); ctx.arc(x, y, r * 0.9, 0, 7); ctx.fill();
+    drawBall(x, y, r * (1 + lift / 40), 1, f.type);
+  }
+
+  // Screen-space overlays
+  screenTransform();
+  labelAt(0, -79, 'AUDIENCE', '#8b92a1');
+  const nectar = al => S.alliance === al ? ` · ${S.nectarLeft} NECTAR left` : '';
+  labelAt(-79, 0, 'RED' + nectar('RED'), COLORS.RED); labelAt(79, 0, 'BLUE' + nectar('BLUE'), COLORS.BLUE);
+  for (const p of S.popups) {
+    const age = S.now - p.t; if (age > 1) continue;
+    const [sx, sy] = toScreen(p.x, p.y);
+    ctx.globalAlpha = 1 - age; ctx.font = `bold ${p.miss ? 12 : 18}px system-ui`; ctx.textAlign = 'center';
+    ctx.fillStyle = p.miss ? '#c9ced6' : '#30d158'; ctx.fillText(p.text, sx, sy - 14 - age * 20); ctx.globalAlpha = 1;
+  }
+  S.popups = S.popups.filter(p => S.now - p.t < 1);
+  drawHud();
+}
+function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+function labelAt(x, y, text, color) {
+  const [sx, sy] = toScreen(x, y);
+  ctx.font = '600 11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = color; ctx.fillText(text, sx, sy); ctx.textBaseline = 'alphabetic';
+}
+const BALL_COLORS = { P: ['#ffd43b', '#b8901a'], R: ['#e5484d', '#8f1d22'], B: ['#3e7bfa', '#1c3f8f'] };
+function drawBall(x, y, r, a, type = 'P') {
+  ctx.globalAlpha = a;
+  ctx.fillStyle = BALL_COLORS[type][0]; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = BALL_COLORS[type][1]; ctx.lineWidth = 0.3; ctx.stroke(); ctx.globalAlpha = 1;
+}
+function drawHives() {
+  // Crossbar between the frame triangles
+  ctx.strokeStyle = 'rgba(200,205,214,.6)'; ctx.lineWidth = 1.2; line(-FIELD.FRAME_X, 0, FIELD.FRAME_X, 0);
+  const W2 = FIELD.CELL_HALF_W, D2 = FIELD.CELL_HALF_D;
+  for (const al of ['RED', 'BLUE']) {
+    const H = S.hive[al], x = al === 'RED' ? -FIELD_AIM.HIVE_X : FIELD_AIM.HIVE_X;
+    for (const cell of ['FAR', 'AUDIENCE']) {
+      const [gx, gy] = fieldGoal(al, cell), up = cell === H.up;
+      ctx.globalAlpha = up ? 0.85 : 0.35;
+      ctx.fillStyle = al === 'RED' ? '#5a2a2e' : '#26345a';
+      ctx.fillRect(gx - W2, gy - D2, W2 * 2, D2 * 2);
+      ctx.lineWidth = up ? 1.1 : 0.5; ctx.strokeStyle = up ? COLORS[al] : 'rgba(255,255,255,.3)';
+      ctx.strokeRect(gx - W2, gy - D2, W2 * 2, D2 * 2);
+      ctx.globalAlpha = 1;
+      if (up) H.contents.forEach((t, i) => drawBall(gx - W2 + 2.5 + (i % 6) * 3, gy - D2 + 2.5 + Math.floor(i / 6) * 3, t === 'P' ? 1.3 : 1.6, 1, t));
+    }
+    ctx.strokeStyle = 'rgba(200,205,214,.5)'; ctx.lineWidth = 0.8; line(x, -FIELD_AIM.CELL_Y + D2, x, FIELD_AIM.CELL_Y - D2);
+    // Which cell the robot thinks is up (odometry aim only)
+    if (al === S.alliance && settings.aim === 'ODOMETRY' && S.phase !== 'init') {
+      const [gx, gy] = fieldGoal(al, S.cell);
+      ctx.setLineDash([1.5, 1.5]); ctx.strokeStyle = '#ffd43b'; ctx.lineWidth = 0.6;
+      ctx.strokeRect(gx - W2 - 1.5, gy - D2 - 1.5, W2 * 2 + 3, D2 * 2 + 3); ctx.setLineDash([]);
+    }
+  }
+}
+function drawOdoGhost() {
+  ctx.save();
+  ctx.translate(S.odo.x, S.odo.y); ctx.rotate(S.odo.h * D2R);
+  ctx.setLineDash([2, 2]); ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 0.6;
+  ctx.strokeRect(-9, -9, 18, 18); line(0, 0, 9, 0);
+  ctx.setLineDash([]); ctx.restore();
+}
+function drawRobot(helpers) {
+  const R = S.robot, T = S.t, col = COLORS[S.alliance];
+  // Camera cone and aim helpers (field frame)
+  if (helpers && S.phase !== 'init') {
+    const [tx, ty] = turretPosition(R.x, R.y, R.h);
+    const dir = (R.h - turretSign() * T.angle) * D2R;
+    if (T.auto && settings.aim === 'LIMELIGHT') {
+      const a1 = dir - SIM.camHalfFovDeg * D2R, a2 = dir + SIM.camHalfFovDeg * D2R;
+      ctx.fillStyle = T.seeing ? 'rgba(48,164,108,.18)' : 'rgba(255,255,255,.06)';
+      ctx.save(); ctx.beginPath(); ctx.rect(-72, -72, 144, 144); ctx.clip();
+      ctx.beginPath();
+      ctx.arc(tx, ty, 100, a1, a2); ctx.arc(tx, ty, SIM.camMinDist, a2, a1, true); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+    // Where a ball fired right now would land
+    const F = S.fly;
+    if (F.rpm > 900) {
+      const d = distanceForRpm(F.rpm), t = flightTime(d), sp = d / t;
+      const lx = tx + (R.vx + sp * Math.cos(dir)) * t, ly = ty + (R.vy + sp * Math.sin(dir)) * t;
+      ctx.strokeStyle = 'rgba(255,212,59,.45)'; ctx.lineWidth = 0.5; ctx.setLineDash([2, 2]); line(tx, ty, lx, ly); ctx.setLineDash([]);
+      ctx.strokeStyle = S.shotStatus === 'READY' ? '#30d158' : '#ffd43b'; ctx.lineWidth = 0.8;
+      line(lx - 2, ly - 2, lx + 2, ly + 2); line(lx - 2, ly + 2, lx + 2, ly - 2);
+    }
+  }
+  ctx.save();
+  ctx.translate(R.x, R.y); ctx.rotate(R.h * D2R);
+  // Bumpers and chassis
+  ctx.fillStyle = col; ctx.fillRect(-9, -9, 18, 18);
+  ctx.fillStyle = '#23262d'; ctx.fillRect(-7.5, -7.5, 15, 15);
+  // Intake at the front (+x)
+  ctx.fillStyle = S.intake > 0.05 ? '#30a46c' : S.intake < -0.05 ? '#f5a524' : '#555b66';
+  ctx.fillRect(6, -7.5, 3, 15);
+  // Wheels
+  ctx.fillStyle = '#111';
+  for (const [x, y] of [[4, 6], [4, -6], [-5, 6], [-5, -6]]) ctx.fillRect(x - 2, y - 1, 4, 2);
+  // Stored balls
+  S.load.forEach((t, i) => drawBall(-4.5 + (i >> 1) * 3.2, (i & 1 ? -3 : 3), 1.4, 0.95, t));
+  // Turret (clockwise positive in robot frame = negative rotation in this CCW frame)
+  ctx.rotate(-turretSign() * T.angle * D2R);
+  ctx.fillStyle = '#8b92a1'; ctx.beginPath(); ctx.arc(0, 0, 4.2, 0, 7); ctx.fill();
+  const spin = S.fly.rpm / 2300;
+  ctx.fillStyle = spin > 0.05 ? `rgb(${80 + 175 * Math.min(1, spin)},${170},${60})` : '#5d636e';
+  ctx.fillRect(1, -1.6, 9, 3.2);
+  ctx.restore();
+  // Heading tick
+  ctx.save(); ctx.translate(R.x, R.y); ctx.rotate(R.h * D2R);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.6; line(9.6, -3, 11.5, 0); line(11.5, 0, 9.6, 3);
+  ctx.restore();
+}
+
+function drawHud() {
+  ctx.textBaseline = 'top';
+  // Timer + score
+  const len = +settings.length;
+  let timeText = '--:--';
+  if (S.phase === 'running' || S.phase === 'ended') {
+    const t = len ? Math.max(0, len - S.matchTime) : S.matchTime;
+    timeText = `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+  }
+  ctx.textAlign = 'left'; ctx.font = '700 26px system-ui'; ctx.fillStyle = '#e7e9ee';
+  ctx.fillText(timeText, 16, 12);
+  ctx.font = '600 13px system-ui'; ctx.fillStyle = '#8b92a1';
+  ctx.fillText(S.phase === 'init' ? 'INIT' : S.phase === 'ended' ? 'MATCH OVER' : len ? 'TELEOP' : 'FREE PRACTICE', 16, 42);
+  const pts = S.phase === 'ended' ? S.final : points();
+  ctx.textAlign = 'right'; ctx.font = '700 26px system-ui'; ctx.fillStyle = COLORS[S.alliance];
+  ctx.fillText(String(pts.total), W - 16, 12);
+  ctx.font = '600 13px system-ui'; ctx.fillStyle = '#8b92a1';
+  const hv = S.alliance === 'ANY' ? null : S.hive[S.alliance];
+  ctx.fillText(`pts · ${S.tips} tips · CELL ${hv ? hiveWeight(hv).toFixed(1) : 0}/${TIP.THRESHOLD} · ${S.load.length}/${SIM.capacity} held`, W - 16, 42);
+
+  // Bottom: auto-aim + shot status + flywheel bar
+  if (S.phase === 'running') {
+    const y = Math.min(H - 40, view.cy + 80 * view.s + 46);
+    ctx.textAlign = 'center'; ctx.font = '600 14px system-ui';
+    const status = S.autoAim ? (S.shotStatus || '') : 'Auto-aim OFF · Square = flywheel 2000 RPM · Cross = feed';
+    const ready = S.shotStatus === 'READY';
+    const tw = ctx.measureText(status).width + 24;
+    ctx.fillStyle = ready ? 'rgba(48,164,108,.9)' : 'rgba(23,26,33,.85)';
+    roundRect(W / 2 - tw / 2, y - 30, tw, 24, 12); ctx.fill();
+    ctx.fillStyle = ready ? '#fff' : '#e7e9ee'; ctx.fillText(status, W / 2, y - 25);
+    // flywheel bar
+    const bw = Math.min(320, W - 40), bx = W / 2 - bw / 2, maxR = 2600;
+    ctx.fillStyle = '#23262d'; roundRect(bx, y + 2, bw, 10, 5); ctx.fill();
+    ctx.fillStyle = '#ffd43b'; roundRect(bx, y + 2, bw * clamp(S.fly.rpm / maxR, 0, 1), 10, 5); ctx.fill();
+    if (S.fly.target > 0) {
+      const tx = bx + bw * clamp(S.fly.target / maxR, 0, 1), tol = bw * S.fly.target * BIOBUZZ.RPM_TOLERANCE / maxR;
+      ctx.fillStyle = 'rgba(48,164,108,.5)'; ctx.fillRect(tx - tol, y, tol * 2, 14);
+      ctx.fillStyle = '#fff'; ctx.fillRect(tx - 1, y - 1, 2, 16);
+    }
+    ctx.font = '11px system-ui'; ctx.fillStyle = '#8b92a1';
+    ctx.fillText(`speed ${Math.hypot(S.robot.vx, S.robot.vy).toFixed(0)} in/s · flywheel ${S.fly.measured.toFixed(0)} rpm · turret ${S.t.angle.toFixed(0)}°`, W / 2, y + 16);
+  }
+  if (S.banner && S.now - S.banner.t < 2.5) {
+    ctx.textAlign = 'center'; ctx.font = '700 18px system-ui';
+    const tw = ctx.measureText(S.banner.text).width + 32;
+    ctx.fillStyle = 'rgba(245,165,36,.92)'; roundRect(W / 2 - tw / 2, 14, tw, 32, 16); ctx.fill();
+    ctx.fillStyle = '#1a1a1a'; ctx.fillText(S.banner.text, W / 2, 20);
+  }
+  if (S.phase !== 'running') {
+    ctx.textAlign = 'center'; ctx.font = '600 16px system-ui';
+    const msg = S.phase === 'init'
+      ? (S.alliance === 'ANY' ? 'INIT: press Circle for RED or Cross for BLUE' : `INIT: ${S.alliance} alliance. Press Share (or Enter) to start`)
+      : `Match over: ${S.final.total} pts (${S.final.auto ? `auto ${S.final.auto} + ` : ''}${S.tips} tips ${S.final.tips} + CELL ${S.final.cell} + GARDEN ${S.final.garden} + PARK ${S.final.park}). Share = new match`;
+    const tw = ctx.measureText(msg).width + 32;
+    ctx.fillStyle = 'rgba(23,26,33,.92)'; const my = Math.min(H - 46, view.cy + 80 * view.s + 12);
+    roundRect(W / 2 - tw / 2, my, tw, 36, 18); ctx.fill();
+    ctx.fillStyle = '#e7e9ee'; ctx.fillText(msg, W / 2, my + 9);
+  }
+  ctx.textBaseline = 'alphabetic';
+}
+function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+
+// ============================================================================
+// Side panel
+// ============================================================================
+const CONTROLS = [
+  ['ls', 'Left stick', 'Drive / strafe (robot-relative, 80%)', 'W A S D'],
+  ['rs', 'Right stick X', 'Turn', '← →'],
+  ['rt', 'R2', 'Intake in (60%)', 'I'],
+  ['lt', 'L2', 'Intake out', 'K'],
+  ['rb', 'R1', 'Turret clockwise (80°/s)', 'E'],
+  ['lb', 'L1', 'Turret counter-clockwise', 'Q'],
+  ['tri', '△ Triangle', 'Toggle auto-aim', 'R'],
+  ['sq', '□ Square', 'Auto-aim ON: hold to shoot · OFF: flywheel 2000 RPM', 'F / Space'],
+  ['x', '✕ Cross', 'Transfer forward (INIT: BLUE)', 'Z'],
+  ['o', '○ Circle', 'Transfer reverse (INIT: RED)', 'X'],
+  ['dp', 'D-pad ↑ / ↓', 'FAR / AUDIENCE CELL is up (odometry aim)', '↑ ↓'],
+  ['opt', 'Options', 'Robot is at its start spot: re-zero odometry', 'O'],
+  ['sh', 'Share', 'Start match (simulator only)', 'Enter'],
+];
+const ctrlTable = document.getElementById('controls');
+ctrlTable.innerHTML = CONTROLS.map(([id, k, a, kb]) => `<tr id="c-${id}"><td class="k">${k}</td><td>${a}<span class="ignored" id="n-${id}"></span></td><td class="kb">${kb}</td></tr>`).join('');
+const active = {};
+let panelTick = 0;
+function updatePanel(g, pad) {
+  const on = {
+    ls: g.left_stick_x !== 0 || g.left_stick_y !== 0, rs: g.right_stick_x !== 0,
+    rt: g.right_trigger > 0.02, lt: g.left_trigger > 0.02, rb: g.right_bumper, lb: g.left_bumper,
+    tri: g.triangle, sq: g.square, x: g.cross, o: g.circle, dp: g.dpad_up || g.dpad_down, opt: g.options, sh: g.share,
+  };
+  for (const id in on) if (active[id] !== on[id]) { active[id] = on[id]; document.getElementById('c-' + id).classList.toggle('active', on[id]); }
+  if (++panelTick % 6) return;
+  const ignored = S.autoAim ? ' (ignored: auto-aim ON)' : '';
+  document.getElementById('n-rb').textContent = ignored; document.getElementById('n-lb').textContent = ignored;
+
+  const dot = document.getElementById('padDot'), txt = document.getElementById('padText');
+  if (pad) {
+    dot.classList.add('on');
+    txt.textContent = (pad.id.replace(/\s*\(.*\)\s*/g, ' ').trim() || 'Controller') + (padNonStandard ? ' (non-standard mapping: use Chrome if buttons are wrong)' : '');
+  } else { dot.classList.remove('on'); txt.textContent = 'No controller: connect a PS controller and press any button. Keyboard works too.'; }
+
+  document.getElementById('telemetry').textContent = S.telemetry.join('\n');
+  const pts = S.phase === 'ended' ? S.final : points();
+  document.getElementById('sScore').textContent = pts.total;
+  document.getElementById('sTips').textContent = S.tips;
+  document.getElementById('sAcc').textContent = S.shots ? `${S.made}/${S.shots}` : '–';
+  let best = 0; try { best = +(localStorage.getItem(bestKey()) || 0); } catch (e) {}
+  const reached = BENCHMARKS.filter(([v]) => pts.total >= v).pop();
+  const next = BENCHMARKS.find(([v]) => pts.total < v);
+  const avgTrip = S.trips.length ? S.trips.reduce((a, b) => a + b, 0) / S.trips.length : 0;
+  document.getElementById('bench').textContent =
+    (reached ? `${reached[1]} reached (${reached[0]}+). ` : '') + (next ? `Next: ${next[1]} at ${next[0]} pts. ` : '') +
+    (S.trips.length ? `Trips: ${S.trips.length}, average ${avgTrip.toFixed(1)} s (goal about 20 s).` : '');
+  document.getElementById('sBest').textContent = +settings.length ? best : '–';
+  const btn = document.getElementById('btnStart');
+  btn.disabled = S.phase !== 'init' || S.alliance === 'ANY';
+  btn.style.opacity = btn.disabled ? 0.5 : 1;
+  document.getElementById('phaseNote').textContent = S.phase === 'init'
+    ? (S.alliance === 'ANY' ? 'INIT: pick an alliance with Circle (RED) or Cross (BLUE).' : (settings.start === 'auto1' ? `INIT: ${S.alliance}. Auto is done: 1 TIP, robot parked in the LOADING ZONE.` : `INIT: ${S.alliance}. Robot at its start spot with 4 pre-loads.`))
+    : S.phase === 'running' ? 'Match running. Hold Share for 1 s to go back to INIT.' : 'Match over.';
+}
+
+// ============================================================================
+// Robot calibration panel
+// ============================================================================
+const CAL_FIELDS = [
+  ['maxAchievableForwardVelocity', 'Max forward speed', 'in/s', 'Foresight Tuner'],
+  ['maxAchievableStrafeVelocity', 'Max strafe speed', 'in/s', 'Foresight Tuner'],
+  ['naturalForwardDeceleration', 'Coast decel, forward', 'in/s²', 'Foresight Tuner', true],
+  ['naturalStrafeDeceleration', 'Coast decel, strafe', 'in/s²', 'Foresight Tuner', true],
+  ['brakeDeceleration', 'Braking decel', 'in/s²', 'measure (see below)'],
+  ['accelerationTime', 'Time to full speed', 's', 'guess / stopwatch'],
+  ['maxTurnRate', 'Max turn rate', '°/s', 'measure (see below)'],
+  ['forwardTicksToInches', 'forwardTicksToInches', 'in/tick', 'Two Wheel Tuner'],
+  ['strafeTicksToInches', 'strafeTicksToInches', 'in/tick', 'Two Wheel Tuner'],
+];
+const calTable = document.getElementById('calFields');
+calTable.innerHTML = CAL_FIELDS.map(([k, label, unit, src]) =>
+  `<tr><td>${label}<div class="ignored">${unit} · ${src}</div></td><td style="width:120px"><input type="number" step="any" id="cal-${k}"></td></tr>`).join('');
+function saveDrive() { try { localStorage.setItem('biobuzz-sim-drive', JSON.stringify(DRIVE)); } catch (e) {} }
+function validCal(k, v, optional) { return (optional && v === null) || (Number.isFinite(v) && v > 0); }
+function refreshCal() {
+  for (const [k] of CAL_FIELDS) {
+    const el = document.getElementById('cal-' + k);
+    if (document.activeElement !== el) el.value = DRIVE[k] === null ? '' : DRIVE[k];
+  }
+  const d = configDrift();
+  document.getElementById('optDriftConfig').textContent = `From ticks-to-inches (fwd ×${d.fwd.toFixed(2)}, strafe ×${d.str.toFixed(2)})`;
+}
+for (const [k, , , , optional] of CAL_FIELDS) {
+  document.getElementById('cal-' + k).addEventListener('change', e => {
+    const raw = e.target.value.trim(), v = raw === '' ? null : +raw;
+    if (validCal(k, v, optional)) { DRIVE[k] = v; saveDrive(); document.getElementById('calMsg').textContent = ''; }
+    else document.getElementById('calMsg').textContent = `${k}: needs a number above 0` + (optional ? ' (or empty)' : '');
+    refreshCal();
+  });
+}
+// Reads "name.set(1.23)", "name: 1.23", "name = 1.23" or '"name", 1.23' for every calibration name.
+function parseCalibration(text) {
+  const found = {};
+  for (const [k] of CAL_FIELDS) {
+    const m = text.match(new RegExp(k + `["']?\\s*(?:\\.set\\(|[:=,])\\s*([-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?)`));
+    if (m && validCal(k, +m[1])) found[k] = +m[1];
+  }
+  return found;
+}
+document.getElementById('calApply').onclick = e => {
+  e.target.blur();
+  const found = parseCalibration(document.getElementById('calPaste').value);
+  const names = Object.keys(found);
+  Object.assign(DRIVE, found); saveDrive(); refreshCal();
+  document.getElementById('calMsg').textContent = names.length
+    ? `Applied ${names.length}: ${names.join(', ')}`
+    : 'No calibration values found. Paste lines like c.maxAchievableForwardVelocity.set(58.2);';
+};
+document.getElementById('calReset').onclick = e => {
+  e.target.blur();
+  Object.assign(DRIVE, DRIVE_DEFAULTS); saveDrive(); refreshCal();
+  document.getElementById('calMsg').textContent = 'Back to the values in index.html.';
+};
+refreshCal();
+
+resetToInit();
+applySettings();
+resize();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
