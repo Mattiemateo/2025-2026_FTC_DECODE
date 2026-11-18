@@ -71,6 +71,30 @@ These follow the BIOBUZZ Competition Manual (TU09):
 
 The side panel compares your score with the strategy benchmarks for your own robot: 13 (must-have), 35 (top-4 seed) and 70 (Energizers level). It also shows the average trip time, where a trip ends when the robot fires its last ball; the goal is about 20 s.
 
+## Other robots (NPCs)
+
+Set *Other robots* in Settings to add a partner and two opponents. They are simple bots, not models of real teams:
+
+- **What they do:**
+  - They collect POLLEN off the floor and out of FLOWERS, holding at most 4.
+  - They drive around the HIVE frame and keep a little distance from other robots.
+  - They line up about 55 in. from their own upward CELL and shoot.
+  - With 12 s left they park in their LOADING ZONE.
+- **Where they start:** with NPCs on, every robot starts with its own pre-loads (none sit in the LOADING ZONES). In *After a 1-tip auto*, the partner has shot its pre-loads into our new upward CELL, and the opponents' auto mirrors ours.
+- **Robots push each other:** all robots, including yours, collide and push each other.
+- **Opponents' human player:** with NPCs on, the opponents' human player also adds NECTAR.
+
+| Level | Driving | Pace (fast-forward test, full TeleOp) |
+| --- | --- | --- |
+| Slow | 35% of top speed, misses often | about 1 tip per alliance, alliance scores 40–70 |
+| Quick | 50% of top speed, accurate | a lone partner manages 2–3 tips; an opponent pair 4–5 |
+
+The levels are tuned to the Roermond numbers in the team strategy: about 1 teleop tip for a weak robot, 2–3 for a top robot. Change `NPC_LEVELS` in `index.html` to make them easier or harder.
+
+**Scoring with NPCs:**
+- **Alliance scores:** shown in the HUD (top right) and the side panel. Winning qualification scores were about 65–70.
+- **Your robot's points:** only your share counts. Each TIP is split by how many balls in the CELL were yours, and you score CELL points only for your own balls.
+
 ## Tuning the driving to the real robot
 
 Driving speed, braking and turning come from the `DRIVE_DEFAULTS` block at the top of the script. Its names match the Pedro tuner output, and the values are guesses until tuning is done. Once the tuners have run, update the numbers in one of two ways:

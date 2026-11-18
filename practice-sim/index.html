@@ -99,6 +99,10 @@
       <option value="setup">Match setup (4 pre-loads, HIVE as staged)</option></select></label>
     <label class="set">Odometry drift <select id="optDrift">
       <option value="off">Off</option><option value="low">Low</option><option value="high">High</option><option value="config" id="optDriftConfig">From ticks-to-inches</option></select></label>
+    <label class="set">Other robots <select id="optNpcs">
+      <option value="none">None (solo practice)</option>
+      <option value="easy">Partner + 2 opponents, slow</option>
+      <option value="strong">Partner + 2 opponents, quick</option></select></label>
     <label class="set">Belly ball <select id="optBelly">
       <option value="1">Real robot: shoots 3 of 4, one stays in</option><option value="0">Fixed: shoots all 4</option></select></label>
     <label class="set">Aim helpers <select id="optHelpers">
@@ -240,9 +244,9 @@ const DRIFT = {
 // ============================================================================
 // Settings (remembered in this browser)
 // ============================================================================
-const settings = { view: 'driver', length: '120', aim: 'LIMELIGHT', start: 'auto1', drift: 'low', belly: '1', helpers: '1' };
+const settings = { view: 'driver', length: '120', aim: 'LIMELIGHT', start: 'auto1', drift: 'low', belly: '1', npcs: 'none', helpers: '1' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('biobuzz-sim-settings') || '{}')); } catch (e) {}
-const optIds = { view: 'optView', length: 'optLength', aim: 'optAim', start: 'optStart', drift: 'optDrift', belly: 'optBelly', helpers: 'optHelpers' };
+const optIds = { view: 'optView', length: 'optLength', aim: 'optAim', start: 'optStart', drift: 'optDrift', belly: 'optBelly', npcs: 'optNpcs', helpers: 'optHelpers' };
 for (const [k, id] of Object.entries(optIds)) {
   const el = document.getElementById(id);
   el.value = settings[k];
@@ -258,7 +262,7 @@ function applySettings(changed) {
   document.getElementById('aimNote').textContent = settings.aim === 'ODOMETRY'
     ? 'Odometry aim: the turret points at the CELL picked with D-pad up/down, but auto-fire never passes ("goal not seen") because the real code needs a Limelight distance. Hold Cross to feed by hand.'
     : 'Limelight aim: the camera on the turret finds the upward CELL of our HIVE by itself. D-pad up/down only matters in odometry mode.';
-  if (changed === 'start' || changed === 'length' || changed === 'belly') { if (S.phase !== 'running') resetToInit(); }
+  if (changed === 'start' || changed === 'length' || changed === 'belly' || changed === 'npcs') { if (S.phase !== 'running') resetToInit(); }
 }
 
 // ============================================================================
@@ -384,9 +388,11 @@ function resetToInit() {
     fly: { target: 0, rpm: 0, measured: 0 },
     intake: 0, transfer: 0, feed: 0, load: [], ejectT: 0, flowerT: 0,
     autoAim: false, lastTriangle: false, spinRpm: FLYWHEEL.DEFAULT_RPM, cell: 'FAR',
-    hive: { RED: { up: FIELD.START_UP.RED, contents: ['R', 'R', 'R'] }, BLUE: { up: FIELD.START_UP.BLUE, contents: ['B', 'B', 'B'] } },
+    hive: { RED: { up: FIELD.START_UP.RED, contents: ['R', 'R', 'R'], ours: 0 }, BLUE: { up: FIELD.START_UP.BLUE, contents: ['B', 'B', 'B'], ours: 0 } },
+    myTipPts: 0, // with a partner on the field: our share of each TIP, by the balls we put in
     flowers: FIELD.FLOWERS.map(([x, y]) => ({ x, y, pollen: 4 })),
-    nectarLeft: FIELD.NECTAR_IN_AREA, nectarQueue: [], nectarAll: false,
+    nectar: { RED: FIELD.NECTAR_IN_AREA, BLUE: FIELD.NECTAR_IN_AREA }, nectarQueue: [], nectarAll: false,
+    npcs: [], allianceTips: { RED: 0, BLUE: 0 }, allianceAuto: { RED: 0, BLUE: 0 },
     balls: [], flying: [], popups: [],
     autoPts: 0, tips: 0, made: 0, shots: 0, trips: [], tripStart: 0, telemetry: [], shotStatus: null,
     shareHeld: 0, lastShare: false, banner: null,
@@ -406,7 +412,8 @@ function stageField() {
   };
   if (S.alliance === 'ANY') return;
   const opp = S.alliance === 'RED' ? 'BLUE' : 'RED';
-  lz(S.alliance, 4); lz(opp, 8);
+  const npcsOn = settings.npcs !== 'none';
+  if (npcsOn) S.npcs = makeNpcs(opp); else { lz(S.alliance, 4); lz(opp, 8); }
   if (settings.start === 'auto1') {
     // Our auto: 4 pre-loads fired, HIVE tipped once, robot parked in the LOADING ZONE.
     const H = S.hive[S.alliance];
@@ -414,8 +421,19 @@ function stageField() {
     S.load = Array(4 - fired).fill('P');
     for (const t of [...H.contents, ...Array(fired).fill('P')]) spillBall(S.alliance, H.up, t);
     H.contents = []; H.up = H.up === 'FAR' ? 'AUDIENCE' : 'FAR';
-    S.nectarLeft--; S.balls.push(ball(S.alliance[0], ...lzSpot(S.alliance)));
+    S.nectar[S.alliance]--; S.balls.push(ball(S.alliance[0], ...lzSpot(S.alliance)));
     S.autoPts = POINTS.LEAVE + POINTS.PARK + POINTS.TIP;
+    S.allianceAuto[S.alliance] = S.autoPts;
+    if (npcsOn) {
+      // Partner shot its 4 pre-loads into the new upward CELL; the opponents did the same as our alliance.
+      H.contents = ['P', 'P', 'P', 'P'];
+      const O = S.hive[opp];
+      for (const t of [...O.contents, 'P', 'P', 'P', 'P']) spillBall(opp, O.up, t);
+      O.contents = ['P', 'P', 'P', 'P']; O.up = O.up === 'FAR' ? 'AUDIENCE' : 'FAR';
+      S.nectar[opp]--; S.balls.push(ball(opp[0], ...lzSpot(opp)));
+      S.allianceAuto[S.alliance] += POINTS.LEAVE;
+      S.allianceAuto[opp] = 2 * POINTS.LEAVE + POINTS.PARK + POINTS.TIP;
+    }
   } else S.load = ['P', 'P', 'P', 'P'];
   placeAtStart();
 }
@@ -733,7 +751,40 @@ function circleObb(b, o, r) {
   b.x += wx * pen; b.y += wy * pen;
   return [wx, wy];
 }
-function robotObb() { return { x: S.robot.x, y: S.robot.y, hw: SIM.robotHalf, hh: SIM.robotHalf, a: S.robot.h * D2R }; }
+function obbOf(R) { return { x: R.x, y: R.y, hw: SIM.robotHalf, hh: SIM.robotHalf, a: R.h * D2R }; }
+function robotObb() { return obbOf(S.robot); }
+// Keep a robot inside the walls and out of the HIVE frame and FLOWERS.
+function fieldCollide(R) {
+  for (let iter = 0; iter < 2; iter++) {
+    let px = 0, py = 0;
+    for (const [x, y] of obbCorners(obbOf(R))) {
+      if (x > 72) px = Math.min(px, 72 - x); if (x < -72) px = Math.max(px, -72 - x);
+      if (y > 72) py = Math.min(py, 72 - y); if (y < -72) py = Math.max(py, -72 - y);
+    }
+    if (px) { R.x += px; R.vx = 0; }
+    if (py) { R.y += py; R.vy = 0; }
+    for (const hv of obstacles()) {
+      const m = obbPush(obbOf(R), hv);
+      if (m) {
+        R.x += m[0]; R.y += m[1];
+        const n = Math.hypot(m[0], m[1]), nx = m[0] / n, ny = m[1] / n, vn = R.vx * nx + R.vy * ny;
+        if (vn < 0) { R.vx -= vn * nx; R.vy -= vn * ny; }
+      }
+    }
+  }
+}
+// Robots push each other apart (half each) and lose the speed they had into each other.
+function robotCollisions() {
+  const all = [S.robot, ...S.npcs];
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) {
+    const a = all[i], b = all[j], m = obbPush(obbOf(a), obbOf(b));
+    if (!m) continue;
+    a.x += m[0] / 2; a.y += m[1] / 2; b.x -= m[0] / 2; b.y -= m[1] / 2;
+    const n = Math.hypot(m[0], m[1]), nx = m[0] / n, ny = m[1] / n;
+    const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+    if (rel < 0) { a.vx -= rel * nx / 2; a.vy -= rel * ny / 2; b.vx += rel * nx / 2; b.vy += rel * ny / 2; }
+  }
+}
 
 function physics(dt) {
   const R = S.robot, p = S.wheels;
@@ -755,25 +806,9 @@ function physics(dt) {
   const ox = R.x, oy = R.y, oh = R.h;
   R.x += R.vx * dt; R.y += R.vy * dt; R.h += R.w * dt;
 
-  // Walls and HIVEs
-  for (let iter = 0; iter < 2; iter++) {
-    const cs = obbCorners(robotObb());
-    let px = 0, py = 0;
-    for (const [x, y] of cs) {
-      if (x > 72) px = Math.min(px, 72 - x); if (x < -72) px = Math.max(px, -72 - x);
-      if (y > 72) py = Math.min(py, 72 - y); if (y < -72) py = Math.max(py, -72 - y);
-    }
-    if (px) { R.x += px; R.vx = 0; }
-    if (py) { R.y += py; R.vy = 0; }
-    for (const hv of obstacles()) {
-      const m = obbPush(robotObb(), hv);
-      if (m) {
-        R.x += m[0]; R.y += m[1];
-        const n = Math.hypot(m[0], m[1]), nx = m[0] / n, ny = m[1] / n, vn = R.vx * nx + R.vy * ny;
-        if (vn < 0) { R.vx -= vn * nx; R.vy -= vn * ny; }
-      }
-    }
-  }
+  fieldCollide(R);
+  for (const n of S.npcs) moveNpc(n, dt);
+  if (S.npcs.length) { robotCollisions(); fieldCollide(R); for (const n of S.npcs) fieldCollide(n); }
 
   // Odometry follows the real motion, with pod scale errors and IMU drift.
   const dr = settings.drift === 'config' ? configDrift() : DRIFT[settings.drift];
@@ -877,6 +912,17 @@ function ballPhysics(dt) {
     if (b.type === 'P' && S.intake > 0.05 && S.load.length < SIM.capacity && lx > SIM.robotHalf - 2 && lx < SIM.robotHalf + r + 2 && Math.abs(ly) < 7.5) {
       S.balls.splice(i, 1); S.load.push('P'); continue;
     }
+    let taken = false;
+    for (const np of S.npcs) {
+      const o = obbOf(np), cn = Math.cos(o.a), sn = Math.sin(o.a);
+      const nlx = (b.x - np.x) * cn + (b.y - np.y) * sn, nly = -(b.x - np.x) * sn + (b.y - np.y) * cn;
+      if (b.type === 'P' && np.intake && np.load.length < SIM.capacity && nlx > SIM.robotHalf - 2 && nlx < SIM.robotHalf + r + 2 && Math.abs(nly) < 7.5) {
+        S.balls.splice(i, 1); np.load.push('P'); taken = true; break;
+      }
+      const m = circleObb(b, o, r);
+      if (m) { const rel = (b.vx - np.vx) * m[0] + (b.vy - np.vy) * m[1]; if (rel < 0) { b.vx -= 1.4 * rel * m[0]; b.vy -= 1.4 * rel * m[1]; } }
+    }
+    if (taken) continue;
     const n = circleObb(b, ro, r);
     if (n) {
       // Velocity of the robot surface at the ball, then bounce off it
@@ -923,13 +969,14 @@ function ballPhysics(dt) {
       if (into) {
         const H = S.hive[into];
         H.contents.push(f.type);
-        if (into === S.alliance) { S.made++; beep(880, 0.06); }
+        if (!f.by && into === S.alliance) H.ours++;
+        if (into === S.alliance && !f.by) { S.made++; beep(880, 0.06); }
         const [gx, gy] = fieldGoal(into, H.up);
-        S.popups.push({ x: gx, y: gy, t: S.now, text: into === S.alliance ? '+2' : 'their CELL', miss: into !== S.alliance });
+        if (!f.by || into === S.alliance) S.popups.push({ x: gx, y: gy, t: S.now, text: into === S.alliance ? '+2' : 'their CELL', miss: into !== S.alliance });
         if (hiveWeight(H) >= TIP.THRESHOLD && !H.tipping) startTip(into);
       } else {
         S.balls.push(ball(f.type, clamp(x, -70, 70), clamp(y, -70, 70), f.vx * 0.15, f.vy * 0.15));
-        if (f.peak > 10) S.popups.push({ x, y, t: S.now, text: 'miss', miss: true });
+        if (f.peak > 10 && !f.by) S.popups.push({ x, y, t: S.now, text: 'miss', miss: true });
       }
     }
   }
@@ -951,13 +998,25 @@ function updateTips() {
 function tipHive(al) {
   const H = S.hive[al];
   for (const t of H.contents) spillBall(al, H.up, t);
-  H.contents = []; H.up = H.up === 'FAR' ? 'AUDIENCE' : 'FAR';
+  if (S.phase === 'running' && al === S.alliance) S.myTipPts += POINTS.TIP * H.ours / Math.max(1, H.contents.length);
+  H.contents = []; H.ours = 0; H.up = H.up === 'FAR' ? 'AUDIENCE' : 'FAR';
+  if (S.phase === 'running') S.allianceTips[al]++;
+  if (hasHumanPlayer(al) && S.nectar[al] > 0 && !S.nectarAll) { S.nectar[al]--; S.nectarQueue.push({ t: S.now + 3, al }); } // G426
   if (al !== S.alliance) return;
   if (S.phase === 'running') S.tips++;
   S.popups.push({ x: fieldGoal(al, H.up)[0], y: 0, t: S.now, text: 'TIP +20' });
   S.banner = { text: `HIVE TIP +20 · ${H.up} CELL is up now`, t: S.now };
   beep(520, 0.15); rumble();
-  if (S.nectarLeft > 0 && !S.nectarAll) { S.nectarLeft--; S.nectarQueue.push(S.now + 3); } // G426: one NECTAR per TIP
+}
+// Opponents only have a drive team when the NPC robots are on.
+function hasHumanPlayer(al) { return al === S.alliance || S.npcs.length > 0; }
+// Alliance score, live: auto + TIPS + balls in the upward CELL + GARDEN + robots parked.
+function alliancePoints(al) {
+  const H = S.hive[al], g = FIELD.GARDEN[al], z = FIELD.LOADING_ZONE[al];
+  const robots = [...(al === S.alliance ? [S.robot] : []), ...S.npcs.filter(n => n.alliance === al)];
+  const garden = S.balls.filter(b => b.x + b.r > g[0] && b.x - b.r < g[1] && b.y + b.r > g[2] && b.y - b.r < g[3]).length;
+  return S.allianceAuto[al] + S.allianceTips[al] * POINTS.TIP + H.contents.length * POINTS.IN_CELL
+    + garden * POINTS.GARDEN + robots.filter(r => robotOverlapsZone(z, r)).length * POINTS.PARK;
 }
 // Live and end-of-match points for our robot
 function points() {
@@ -966,13 +1025,156 @@ function points() {
   const inCell = H.contents.length;
   const garden = S.balls.filter(b => b.x + b.r > g[0] && b.x - b.r < g[1] && b.y + b.r > g[2] && b.y - b.r < g[3]).length;
   const park = robotOverlapsZone(z); // at least partly in the LOADING ZONE
-  const p = { auto: S.autoPts, tips: S.tips * POINTS.TIP, cell: inCell * POINTS.IN_CELL, inCell, garden: garden * POINTS.GARDEN, park: park ? POINTS.PARK : 0 };
+  // Solo, every TIP and CELL ball is ours; with a partner only our share counts.
+  const solo = !S.npcs.length;
+  const p = { auto: S.autoPts, tips: Math.round(solo ? S.tips * POINTS.TIP : S.myTipPts), cell: (solo ? inCell : H.ours) * POINTS.IN_CELL, inCell, garden: garden * POINTS.GARDEN, park: park ? POINTS.PARK : 0 };
   p.total = p.auto + p.tips + p.cell + p.garden + p.park;
   return p;
 }
-function robotOverlapsZone(z) {
+function robotOverlapsZone(z, R = S.robot) {
   const zone = { x: (z[0] + z[1]) / 2, y: (z[2] + z[3]) / 2, hw: (z[1] - z[0]) / 2, hh: (z[3] - z[2]) / 2, a: 0 };
-  return !!obbPush(robotObb(), zone);
+  return !!obbPush(obbOf(R), zone);
+}
+
+// ============================================================================
+// Other robots (NPCs): a partner and two opponents. Simple bots that collect POLLEN, shoot at their own
+// upward CELL from about 55 in., and park in their LOADING ZONE near the end. Practice traffic, not a model of a real team.
+// ============================================================================
+// Paced against Roermond: a slow bot manages about 1 teleop TIP, a quick one 2-3 (Energizers level).
+// pickup: s spent settling each ball into the robot, settle: s lining up before the first shot.
+const NPC_LEVELS = {
+  easy:   { speed: 0.35, aimIn: 7, shootEvery: 0.8, turn: 0.5, pickup: 6, settle: 5 },
+  strong: { speed: 0.5, aimIn: 2.5, shootEvery: 0.45, turn: 0.8, pickup: 3.2, settle: 3 },
+};
+function makeNpcs(opp) {
+  const al = S.alliance, auto = settings.start === 'auto1';
+  const sx = a => a === 'RED' ? -1 : 1, farFromLz = a => a === 'RED' ? -45 : 45;
+  const mk = (a, name, x, y, slot) => ({
+    alliance: a, name, x, y, h: a === 'RED' ? 0 : 180, vx: 0, vy: 0, w: 0, slot,
+    load: auto ? [] : ['P', 'P', 'P', 'P'], mode: 'collect', intake: 0, cmd: [0, 0, 0],
+    fireT: 0, flowerT: 0, stuckT: 0, unstuck: null, ignore: null, targetBall: null, pauseT: 0, settleT: null, lastLoad: 0,
+  });
+  const z = FIELD.LOADING_ZONE[opp], lzX = opp === 'RED' ? z[1] + 3 : z[0] - 3;
+  return [
+    mk(al, 'partner', sx(al) * (auto ? 50 : 63), farFromLz(al), 1),
+    auto ? mk(opp, 'opp 1', lzX, (z[2] + z[3]) / 2, 0) : mk(opp, 'opp 1', sx(opp) * 63, 0, 0),
+    mk(opp, 'opp 2', sx(opp) * (auto ? 50 : 63), farFromLz(opp), 1),
+  ];
+}
+function parkSpot(n) {
+  const z = FIELD.LOADING_ZONE[n.alliance], x = n.alliance === 'RED' ? z[1] + 2 : z[0] - 2;
+  if (n.slot === 0) return [x, (z[2] + z[3]) / 2];
+  return [x, n.alliance === 'RED' ? z[3] + 5 : z[2] - 5]; // overlaps the zone's far end, leaves room for a second robot
+}
+function shootSpot(n) {
+  const [gx, gy] = fieldGoal(n.alliance, S.hive[n.alliance].up);
+  let dx = n.x - gx, dy = n.y - gy; const d = Math.hypot(dx, dy) || 1;
+  let x = clamp(gx + dx / d * 55, -60, 60), y = clamp(gy + dy / d * 55, -60, 60);
+  if (Math.abs(x) < FIELD.FRAME_X + 10 && Math.abs(y) < FIELD.FRAME_HALF_DEPTH + 12) y = Math.sign(gy) * 42;
+  return [x, y];
+}
+function npcTarget(n) {
+  let best = null, bestD = Infinity;
+  for (const b of S.balls) {
+    if (b.type !== 'P' || (n.ignore && n.ignore.ball === b && S.now < n.ignore.until)) continue;
+    if (S.npcs.some(o => o !== n && o.targetBall === b)) continue;
+    const d = Math.hypot(b.x - n.x, b.y - n.y);
+    if (d < bestD) { bestD = d; best = { pt: [b.x, b.y], ball: b }; }
+  }
+  for (const f of S.flowers) {
+    if (!f.pollen || S.npcs.some(o => o !== n && o.targetFlower === f)) continue;
+    const [nx, ny] = wallNormal(f.x, f.y), pt = [f.x + nx * 15, f.y + ny * 15], d = Math.hypot(pt[0] - n.x, pt[1] - n.y) + 12;
+    if (d < bestD) { bestD = d; best = { pt, face: [f.x, f.y], flower: f, retr: [f.x + nx * 6.5, f.y + ny * 6.5] }; }
+  }
+  return best;
+}
+// Go around the end of a HIVE frame triangle instead of into it.
+function waypoint(n, goal) {
+  for (const bx of [-FIELD.FRAME_X, FIELD.FRAME_X]) {
+    if ((n.x - bx) * (goal[0] - bx) >= 0) continue;
+    const u = (bx - n.x) / (goal[0] - n.x), yc = n.y + u * (goal[1] - n.y);
+    if (Math.abs(yc) < FIELD.FRAME_HALF_DEPTH + 11) return [bx + Math.sign(goal[0] - bx) * 3, Math.sign(yc || n.y || 1) * (FIELD.FRAME_HALF_DEPTH + 14)];
+  }
+  return goal;
+}
+function frontLocal(n, p) {
+  const h = n.h * D2R, c = Math.cos(h), s = Math.sin(h);
+  return [(p[0] - n.x) * c + (p[1] - n.y) * s, -(p[0] - n.x) * s + (p[1] - n.y) * c];
+}
+function npcThink(n, dt) {
+  const lvl = NPC_LEVELS[settings.npcs] || NPC_LEVELS.easy;
+  const vmax = DRIVE.maxAchievableForwardVelocity * lvl.speed;
+  n.intake = 0; n.targetBall = null; n.targetFlower = null;
+  n.fireT = Math.max(0, n.fireT - dt); n.flowerT = Math.max(0, n.flowerT - dt);
+  if (S.phase !== 'running') { n.cmd = [0, 0, 0]; return; }
+  const len = +settings.length, left = len ? len - S.matchTime : Infinity;
+  if (left < 12) n.mode = 'park';
+  // Pause briefly after each pickup, like a driver lining up the next ball
+  if (n.load.length > n.lastLoad) n.pauseT = lvl.pickup;
+  n.lastLoad = n.load.length;
+  if (n.pauseT > 0 && n.mode !== 'park') { n.pauseT -= dt; n.cmd = [0, 0, 0]; n.intake = 1; return; }
+  let goal = null, face = null;
+  if (n.mode === 'shoot') {
+    if (!n.load.length) { n.mode = 'collect'; n.settleT = null; }
+    else {
+      goal = shootSpot(n);
+      if (Math.hypot(goal[0] - n.x, goal[1] - n.y) < 8) {
+        goal = null;
+        if (n.settleT === null) n.settleT = lvl.settle;
+        n.settleT = Math.max(0, n.settleT - dt);
+        if (n.settleT === 0 && !S.hive[n.alliance].tipping && n.fireT === 0) { npcLaunch(n, lvl); n.fireT = lvl.shootEvery; }
+      }
+    }
+  }
+  if (n.mode === 'collect') {
+    const t = n.load.length < SIM.capacity ? npcTarget(n) : null;
+    if (n.load.length >= SIM.capacity || (!t && n.load.length)) n.mode = 'shoot';
+    else if (t) {
+      goal = t.pt; face = t.face || t.pt; n.intake = 1;
+      n.targetBall = t.ball || null; n.targetFlower = t.flower || null;
+      if (t.flower && n.flowerT === 0) {
+        const [lx, ly] = frontLocal(n, t.retr);
+        if (lx > SIM.robotHalf - 2 && lx < SIM.robotHalf + 4 && Math.abs(ly) < 7.5) { t.flower.pollen--; n.load.push('P'); n.flowerT = 0.3; }
+      }
+    }
+  }
+  if (n.mode === 'park') goal = parkSpot(n);
+  let vx = 0, vy = 0;
+  if (goal) {
+    const wp = waypoint(n, goal), dx = wp[0] - n.x, dy = wp[1] - n.y, d = Math.hypot(dx, dy);
+    const sp = vmax * Math.min(1, d / 14);
+    if (d > 0.5) { vx = dx / d * sp; vy = dy / d * sp; }
+  }
+  for (const o of [S.robot, ...S.npcs]) { // keep a little space from other robots
+    if (o === n) continue;
+    const dx = n.x - o.x, dy = n.y - o.y, d = Math.hypot(dx, dy);
+    if (d > 0 && d < 24) { const k = vmax * 0.6 * (24 - d) / 24; vx += dx / d * k; vy += dy / d * k; }
+  }
+  // Stuck against something: back off sideways for a moment and pick another ball
+  const want = Math.hypot(vx, vy);
+  if (want > 15 && Math.hypot(n.vx, n.vy) < 4) n.stuckT += dt; else n.stuckT = 0;
+  if (n.stuckT > 1) {
+    const a = rand(0, 2 * Math.PI);
+    n.unstuck = { until: S.now + 0.7, v: [Math.cos(a) * vmax, Math.sin(a) * vmax] };
+    n.ignore = n.targetBall ? { ball: n.targetBall, until: S.now + 5 } : null; n.stuckT = 0;
+  }
+  if (n.unstuck && S.now < n.unstuck.until) [vx, vy] = n.unstuck.v;
+  let w = 0;
+  if (face) w = clamp(wrap180(Math.atan2(face[1] - n.y, face[0] - n.x) * R2D - n.h) * 5, -DRIVE.maxTurnRate * lvl.turn, DRIVE.maxTurnRate * lvl.turn);
+  n.cmd = [vx, vy, w];
+}
+function moveNpc(n, dt) {
+  const acc = DRIVE.maxAchievableForwardVelocity / DRIVE.accelerationTime, dec = brakeDecels().forward;
+  n.vx = approach(n.vx, n.cmd[0], acc, dec, dt); n.vy = approach(n.vy, n.cmd[1], acc, dec, dt);
+  n.w = n.cmd[2];
+  n.x += n.vx * dt; n.y += n.vy * dt; n.h += n.w * dt;
+  fieldCollide(n);
+}
+function npcLaunch(n, lvl) {
+  const [gx, gy] = fieldGoal(n.alliance, S.hive[n.alliance].up);
+  const tx = gx + randn() * lvl.aimIn, ty = gy + randn() * lvl.aimIn * 0.6;
+  const d = Math.hypot(tx - n.x, ty - n.y), t = flightTime(d);
+  S.flying.push({ type: n.load.shift(), by: n, x0: n.x, y0: n.y, vx: (tx - n.x) / t, vy: (ty - n.y) / t, T: t, age: 0, peak: 40 });
 }
 
 // ============================================================================
@@ -980,7 +1182,7 @@ function robotOverlapsZone(z) {
 // ============================================================================
 function startMatch() {
   if (S.phase !== 'init' || S.alliance === 'ANY') return;
-  S.phase = 'running'; S.matchTime = 0; S.tips = 0; S.made = 0; S.shots = 0; S.trips = []; S.tripStart = 0;
+  S.phase = 'running'; S.matchTime = 0; S.tips = 0; S.myTipPts = 0; S.made = 0; S.shots = 0; S.trips = []; S.tripStart = 0;
   // OpMode start: auto-aim off, spinRpm = DEFAULT_RPM, cell FAR, resetPoseToStart()
   S.autoAim = false; S.spinRpm = FLYWHEEL.DEFAULT_RPM; S.cell = 'FAR'; resetPoseToStart();
   beep(660, 0.15);
@@ -989,6 +1191,7 @@ function bestKey() { return `biobuzz-sim-best-${settings.length}-${settings.star
 function endMatch() {
   S.phase = 'ended'; stopAll(); beep(330, 0.4);
   S.final = points();
+  if (S.npcs.length) S.finalAlliance = { RED: alliancePoints('RED'), BLUE: alliancePoints('BLUE') };
   if (+settings.length) {
     try { if (S.final.total > +(localStorage.getItem(bestKey()) || 0)) localStorage.setItem(bestKey(), S.final.total); } catch (e) {}
   }
@@ -1022,6 +1225,13 @@ function frame(nowMs) {
   lastFrame = nowMs;
   const { g, pad } = readGamepad();
   lastPad = pad;
+  tick(dt, g);
+  render();
+  updatePanel(g, pad);
+  requestAnimationFrame(frame);
+}
+// One step of the whole game (also used to fast-forward in tests).
+function tick(dt, g) {
   S.gp = g;
 
   // Share: start from INIT, back to INIT from the end screen, hold 1 s to abort a match
@@ -1041,20 +1251,18 @@ function frame(nowMs) {
     // Human player: NECTAR into our LOADING ZONE after each TIP, and all of it at 1:00 left (G426, G427)
     if (len && !S.nectarAll && len - S.matchTime <= 60) {
       S.nectarAll = true;
-      for (; S.nectarLeft > 0; S.nectarLeft--) S.nectarQueue.push(S.now + 1 + S.nectarQueue.length * 0.6);
+      for (const al of ['RED', 'BLUE']) if (hasHumanPlayer(al))
+        for (; S.nectar[al] > 0; S.nectar[al]--) S.nectarQueue.push({ t: S.now + 1 + S.nectarQueue.length * 0.6, al });
       S.banner = { text: '1:00 left: all NECTAR enters', t: S.now };
     }
-    S.nectarQueue = S.nectarQueue.filter(t => { if (S.now < t) return true; S.balls.push(ball(S.alliance[0], ...lzSpot(S.alliance))); return false; });
+    S.nectarQueue = S.nectarQueue.filter(q => { if (S.now < q.t) return true; S.balls.push(ball(q.al[0], ...lzSpot(q.al))); return false; });
     if (len && S.matchTime >= len) endMatch();
   } else stopAll();
 
+  for (const n of S.npcs) npcThink(n, dt);
   const steps = 4;
   for (let i = 0; i < steps; i++) { S.now += dt / steps; physics(dt / steps); }
   updateTips();
-
-  render();
-  updatePanel(g, pad);
-  requestAnimationFrame(frame);
 }
 
 // ============================================================================
@@ -1136,6 +1344,7 @@ function render() {
 
   const helpers = settings.helpers === '1';
   if (helpers && S.alliance !== 'ANY' && settings.drift !== 'off' && S.phase !== 'init') drawOdoGhost();
+  for (const n of S.npcs) drawNpc(n);
   drawRobot(helpers);
   drawHives(); // overhead, drawn above the robot
 
@@ -1152,7 +1361,8 @@ function render() {
   // Screen-space overlays
   screenTransform();
   labelAt(0, -79, 'AUDIENCE', '#8b92a1');
-  const nectar = al => S.alliance === al ? ` · ${S.nectarLeft} NECTAR left` : '';
+  const nectar = al => hasHumanPlayer(al) && S.alliance !== 'ANY' ? ` · ${S.nectar[al]} NECTAR left` : '';
+  for (const n of S.npcs) { const [sx, sy] = toScreen(n.x, n.y); ctx.font = '600 10px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#e7e9ee'; ctx.fillText(n.name, sx, sy + 4); }
   labelAt(-79, 0, 'RED' + nectar('RED'), COLORS.RED); labelAt(79, 0, 'BLUE' + nectar('BLUE'), COLORS.BLUE);
   for (const p of S.popups) {
     const age = S.now - p.t; if (age > 1) continue;
@@ -1203,6 +1413,16 @@ function drawHives() {
       ctx.strokeRect(gx - W2 - 1.5, gy - D2 - 1.5, W2 * 2 + 3, D2 * 2 + 3); ctx.setLineDash([]);
     }
   }
+}
+function drawNpc(n) {
+  ctx.save();
+  ctx.translate(n.x, n.y); ctx.rotate(n.h * D2R);
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = COLORS[n.alliance]; ctx.fillRect(-9, -9, 18, 18);
+  ctx.fillStyle = '#4a4f59'; ctx.fillRect(-7.5, -7.5, 15, 15);
+  ctx.fillStyle = n.intake ? '#30a46c' : '#6b717c'; ctx.fillRect(6, -7.5, 3, 15);
+  n.load.forEach((t, i) => drawBall(-4.5 + (i >> 1) * 3.2, (i & 1 ? -3 : 3), 1.4, 0.95, t));
+  ctx.globalAlpha = 1; ctx.restore();
 }
 function drawOdoGhost() {
   ctx.save();
@@ -1279,6 +1499,11 @@ function drawHud() {
   ctx.font = '600 13px system-ui'; ctx.fillStyle = '#8b92a1';
   const hv = S.alliance === 'ANY' ? null : S.hive[S.alliance];
   ctx.fillText(`pts · ${S.tips} tips · CELL ${hv ? hiveWeight(hv).toFixed(1) : 0}/${TIP.THRESHOLD} · ${S.load.length}/${SIM.capacity} held`, W - 16, 42);
+  if (S.npcs.length) {
+    const fin = S.phase === 'ended' && S.finalAlliance, r = fin ? fin.RED : alliancePoints('RED'), b = fin ? fin.BLUE : alliancePoints('BLUE');
+    ctx.font = '600 13px system-ui'; ctx.fillStyle = COLORS.RED; ctx.fillText(`RED ${r}`, W - 16 - ctx.measureText(`  BLUE ${b}`).width, 60);
+    ctx.fillStyle = COLORS.BLUE; ctx.fillText(`  BLUE ${b}`, W - 16, 60);
+  }
 
   // Bottom: auto-aim + shot status + flywheel bar
   if (S.phase === 'running') {
@@ -1370,8 +1595,14 @@ function updatePanel(g, pad) {
   const reached = BENCHMARKS.filter(([v]) => pts.total >= v).pop();
   const next = BENCHMARKS.find(([v]) => pts.total < v);
   const avgTrip = S.trips.length ? S.trips.reduce((a, b) => a + b, 0) / S.trips.length : 0;
-  document.getElementById('bench').textContent =
-    (reached ? `${reached[1]} reached (${reached[0]}+). ` : '') + (next ? `Next: ${next[1]} at ${next[0]} pts. ` : '') +
+  let allianceText = '';
+  if (S.npcs.length && S.alliance !== 'ANY') {
+    const opp = S.alliance === 'RED' ? 'BLUE' : 'RED', fin = S.phase === 'ended' && S.finalAlliance;
+    const us = fin ? fin[S.alliance] : alliancePoints(S.alliance), them = fin ? fin[opp] : alliancePoints(opp);
+    allianceText = `Alliance ${us} vs ${them} (winning qualification scores are about 65–70). `;
+  }
+  document.getElementById('bench').textContent = allianceText +
+    (reached ? `Your robot: ${reached[1]} reached (${reached[0]}+). ` : '') + (next ? `Next: ${next[1]} at ${next[0]} pts. ` : '') +
     (S.trips.length ? `Trips: ${S.trips.length}, average ${avgTrip.toFixed(1)} s (goal about 20 s).` : '');
   document.getElementById('sBest').textContent = +settings.length ? best : '–';
   const btn = document.getElementById('btnStart');
