@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
@@ -7,6 +8,7 @@ import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
 import java.util.List;
 
 @TeleOp(name = "Simple AprilTag Test")
+@Disabled
 public class SimpleAprilTagTest extends LinearOpMode {
 
     private AprilTagDetector aprilTagDetector;

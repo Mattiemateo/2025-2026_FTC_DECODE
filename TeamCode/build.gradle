@@ -1,3 +1,17 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        google()
+        maven { url 'https://repo.dairy.foundation/releases' }
+    }
+    dependencies {
+        classpath 'dev.frozenmilk:Load:0.3.2'
+    }
+}
+
+apply plugin: 'com.android.application'
+apply plugin: 'dev.frozenmilk.sinister.sloth.load'
+
 //
 // build.gradle in TeamCode
 //
@@ -8,7 +22,6 @@
 // please think carefully as to whether such customizations are really necessary
 // before doing so.
 
-
 // Custom definitions may go here
 
 // Include common definitions from above.
@@ -17,6 +30,10 @@ apply from: '../build.dependencies.gradle'
 
 android {
     namespace = 'org.firstinspires.ftc.teamcode'
+    compileSdk 36
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+    }
 
     packagingOptions {
         jniLibs.useLegacyPackaging true
@@ -25,4 +42,8 @@ android {
 
 dependencies {
     implementation project(':FtcRobotController')
+    implementation 'dev.frozenmilk.sinister:Sloth:0.3.2'
+    implementation 'com.skeletonarmyftc.marrow:core:1.2.0'
+    testImplementation 'junit:junit:4.13.2'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }

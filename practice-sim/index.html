@@ -161,7 +161,8 @@
 // ============================================================================
 // Robot constants: copied from the biobuzz-season TeamCode. Update these when the Java changes.
 // ============================================================================
-const BIOBUZZ = { DRIVE_SCALE: 0.8, AIM_TOLERANCE_DEG: 2.0, RPM_TOLERANCE: 0.03, MAX_TARGET_AGE_SEC: 0.2 };
+const BIOBUZZ = { DRIVE_SCALE: 0.8, AIM_TOLERANCE_DEG: 2.0, RPM_TOLERANCE: 0.03, MAX_TARGET_AGE_SEC: 0.2,
+  READY_RUMBLE_MS: 200, READY_REARM_SEC: 0.5 };
 const ROBOT = { INTAKE_POWER: 0.6, TRANSFER_POWER: 0.9, VELOCITY_FILTER: 0.5 };
 const FLYWHEEL = { DEFAULT_RPM: 2000, MAX_RPM: 6000 };
 const TURRET = {
@@ -285,6 +286,10 @@ function drivePowers(forward, strafe, turn, scale) {
     (forward + strafe - turn) / den * scale,   // back right
   ];
 }
+// BIOBUZZ.readyRumble: buzz when the shot turns READY, not while Square is already shooting.
+function readyRumble(shooting, secondsSinceReady) {
+  return BIOBUZZ.READY_RUMBLE_MS > 0 && !shooting && secondsSinceReady >= BIOBUZZ.READY_REARM_SEC;
+}
 function shotBlocker(blindSpot, aimErrorDeg, rpm, targetRpm, targetAgeSec, distanceIn) {
   if (blindSpot) return "goal behind the turret's blind spot";
   if (targetAgeSec > BIOBUZZ.MAX_TARGET_AGE_SEC) return 'goal not seen';
@@ -395,7 +400,7 @@ function resetToInit() {
     npcs: [], allianceTips: { RED: 0, BLUE: 0 }, allianceAuto: { RED: 0, BLUE: 0 },
     balls: [], flying: [], popups: [],
     autoPts: 0, tips: 0, made: 0, shots: 0, trips: [], tripStart: 0, telemetry: [], shotStatus: null,
-    shareHeld: 0, lastShare: false, banner: null,
+    shareHeld: 0, lastShare: false, banner: null, lastReady: -Infinity, readyBuzzAt: -Infinity,
   };
   stageField();
 }
@@ -567,6 +572,10 @@ function opModeLoop(gp, dt) {
     const fire = gp.square && blocker === null;
     S.transfer = gp.square ? (fire ? ROBOT.TRANSFER_POWER : 0) : manualTransfer;
     S.shotStatus = blocker === null ? 'READY' : 'WAIT: ' + blocker;
+    if (blocker === null) {
+      if (readyRumble(gp.square, S.now - S.lastReady)) rumbleReady();
+      S.lastReady = S.now;
+    }
     tl.push('Shot: ' + S.shotStatus);
   } else {
     setFlywheel(gp.square ? FLYWHEEL.DEFAULT_RPM : 0);
@@ -1006,7 +1015,7 @@ function tipHive(al) {
   if (S.phase === 'running') S.tips++;
   S.popups.push({ x: fieldGoal(al, H.up)[0], y: 0, t: S.now, text: 'TIP +20' });
   S.banner = { text: `HIVE TIP +20 · ${H.up} CELL is up now`, t: S.now };
-  beep(520, 0.15); rumble();
+  beep(520, 0.15);
 }
 // Opponents only have a drive team when the NPC robots are on.
 function hasHumanPlayer(al) { return al === S.alliance || S.npcs.length > 0; }
@@ -1212,8 +1221,14 @@ function beep(freq, dur) {
   } catch (e) {}
 }
 let lastPad = null;
-function rumble() {
-  try { lastPad && lastPad.vibrationActuator && lastPad.vibrationActuator.playEffect('dual-rumble', { duration: 120, strongMagnitude: 0.3, weakMagnitude: 0.6 }); } catch (e) {}
+// gamepad1.rumble(ms): both motors at full power. The browser's vibration support varies, so the
+// HUD also pulses; the controller only rumbles where the robot would (no extra sim rumbles).
+function rumbleReady() {
+  S.readyBuzzAt = S.now;
+  try {
+    const a = lastPad && lastPad.vibrationActuator;
+    if (a) a.playEffect(a.type || 'dual-rumble', { duration: BIOBUZZ.READY_RUMBLE_MS, strongMagnitude: 1, weakMagnitude: 1 });
+  } catch (e) {}
 }
 
 // ============================================================================
@@ -1514,6 +1529,13 @@ function drawHud() {
     const tw = ctx.measureText(status).width + 24;
     ctx.fillStyle = ready ? 'rgba(48,164,108,.9)' : 'rgba(23,26,33,.85)';
     roundRect(W / 2 - tw / 2, y - 30, tw, 24, 12); ctx.fill();
+    const buzz = (S.now - S.readyBuzzAt) / (BIOBUZZ.READY_RUMBLE_MS / 1000);
+    if (buzz >= 0 && buzz < 1) { // the controller is buzzing: show it on screen too
+      ctx.strokeStyle = `rgba(48,209,88,${1 - buzz})`; ctx.lineWidth = 3;
+      roundRect(W / 2 - tw / 2 - 6 - buzz * 8, y - 36 - buzz * 8, tw + 12 + buzz * 16, 36 + buzz * 16, 18 + buzz * 8); ctx.stroke();
+      ctx.font = '600 11px system-ui'; ctx.fillStyle = `rgba(48,209,88,${1 - buzz})`; ctx.fillText('rumble', W / 2 + tw / 2 + 34, y - 25);
+      ctx.font = '600 14px system-ui';
+    }
     ctx.fillStyle = ready ? '#fff' : '#e7e9ee'; ctx.fillText(status, W / 2, y - 25);
     // flywheel bar
     const bw = Math.min(320, W - 40), bx = W / 2 - bw / 2, maxR = 2600;
@@ -1563,6 +1585,7 @@ const CONTROLS = [
   ['o', '○ Circle', 'Transfer reverse (INIT: RED)', 'X'],
   ['dp', 'D-pad ↑ / ↓', 'FAR / AUDIENCE CELL is up (odometry aim)', '↑ ↓'],
   ['opt', 'Options', 'Robot is at its start spot: re-zero odometry', 'O'],
+  ['rum', '(rumble)', 'Buzz when the shot turns READY: press Square now', ''],
   ['sh', 'Share', 'Start match (simulator only)', 'Enter'],
 ];
 const ctrlTable = document.getElementById('controls');
@@ -1574,6 +1597,7 @@ function updatePanel(g, pad) {
     ls: g.left_stick_x !== 0 || g.left_stick_y !== 0, rs: g.right_stick_x !== 0,
     rt: g.right_trigger > 0.02, lt: g.left_trigger > 0.02, rb: g.right_bumper, lb: g.left_bumper,
     tri: g.triangle, sq: g.square, x: g.cross, o: g.circle, dp: g.dpad_up || g.dpad_down, opt: g.options, sh: g.share,
+    rum: S.now - S.readyBuzzAt < BIOBUZZ.READY_RUMBLE_MS / 1000,
   };
   for (const id in on) if (active[id] !== on[id]) { active[id] = on[id]; document.getElementById('c-' + id).classList.toggle('active', on[id]); }
   if (++panelTick % 6) return;
