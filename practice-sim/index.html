@@ -66,11 +66,12 @@
 
   <h2>Match</h2>
   <div class="stats">
-    <div class="stat"><b id="sScore">0</b><span>scored</span></div>
-    <div class="stat"><b id="sShots">0</b><span>shots</span></div>
-    <div class="stat"><b id="sAcc">–</b><span>accuracy</span></div>
+    <div class="stat"><b id="sScore">0</b><span>points</span></div>
+    <div class="stat"><b id="sTips">0</b><span>HIVE tips</span></div>
+    <div class="stat"><b id="sAcc">–</b><span>in the CELL</span></div>
     <div class="stat"><b id="sBest">0</b><span>best</span></div>
   </div>
+  <div class="note" id="bench"></div>
   <div class="row">
     <button class="primary" id="btnStart">Start match</button>
     <button id="btnReset">Back to INIT</button>
@@ -93,12 +94,11 @@
       <option value="120">2:00 TeleOp</option><option value="0">Free practice (no timer)</option></select></label>
     <label class="set">Auto-aim source <select id="optAim">
       <option value="LIMELIGHT">Limelight (robot default)</option><option value="ODOMETRY">Odometry</option></select></label>
-    <label class="set">HIVE tipping <select id="optTip">
-      <option value="0">Off</option><option value="25">Every 20–30 s</option><option value="12">Every 8–15 s</option></select></label>
+    <label class="set">Start from <select id="optStart">
+      <option value="auto1">After a 1-tip auto (parked in LOADING ZONE)</option>
+      <option value="setup">Match setup (4 pre-loads, HIVE as staged)</option></select></label>
     <label class="set">Odometry drift <select id="optDrift">
       <option value="off">Off</option><option value="low">Low</option><option value="high">High</option><option value="config" id="optDriftConfig">From ticks-to-inches</option></select></label>
-    <label class="set">Balls on the field <select id="optBalls">
-      <option>6</option><option selected>12</option><option>20</option></select></label>
     <label class="set">Aim helpers <select id="optHelpers">
       <option value="1">Show (camera cone, aim line, landing spot)</option><option value="0">Hide (match realism)</option></select></label>
     <div class="note" id="aimNote"></div>
@@ -117,6 +117,21 @@
       Coast deceleration is the lower limit; if both coast values are set, strafing brakes in the same ratio.<br>
       <b>Turn rate:</b> spin in place at full right stick for 5 s and count turns (turns × 360 ÷ 5 × 1.25, because the TeleOp caps at 80%).<br>
       <b>Odometry:</b> with Odometry drift set to "From ticks-to-inches", the simulated pods read stock goBILDA 4-Bar ticks (0.001979 in/tick) through your ticks-to-inches values, so a wrong value shows up as drift.
+    </div>
+  </details>
+
+  <details>
+    <summary>Field and scoring</summary>
+    <div class="note">
+      From the Competition Manual (TU09): 40 POLLEN (2.8 in.) and 8 + 8 NECTAR (3.6 in.). Staging: 4 POLLEN in each FLOWER, 4 in each GARDEN,
+      4 pre-loaded per robot, 3 NECTAR in each upward CELL, 5 NECTAR per ALLIANCE AREA. Practice has no partner or opponents, so their pre-loads sit in the
+      LOADING ZONES, as the manual does for robots that don't show up.<br><br>
+      The HIVE frame stands at both ends of the crossbar (49.5 in. apart); robots can drive under the HIVES. The CELL opening is 20 × 12 in. seen from above.
+      A tip spills the CELL under it and the other CELL turns up. After each of our tips the human player puts one NECTAR in our LOADING ZONE,
+      and all remaining NECTAR at 1:00. Our robot leaves NECTAR alone. You can pull POLLEN out of the bottom of a FLOWER by driving the intake into it.<br><br>
+      Tipping (from a third-party rules summary, not the manual): 7 POLLEN don't tip, 8 do; 3 NECTAR + 2 POLLEN don't, 3 NECTAR + 3 POLLEN do.<br>
+      Points: TIP 20, each ball left in the upward CELL at the end 2, GARDEN 1, PARK in the LOADING ZONE 5. The 1-tip-auto start counts LEAVE 3 + PARK 5 + TIP 20.
+      FLOWERS and RANKING POINTS aren't scored here.
     </div>
   </details>
 
@@ -165,18 +180,34 @@ const SIM = {
   turretGain: 12,          // 1/s, RUN_TO_POSITION proportional gain
   flySpinUpTau: 0.3, flyCoastTau: 2.5, shotRpmDrop: 0.05, rpmNoise: 6,
   feedTimeFullPower: 0.2,  // s per ball at transfer power 1
-  capacity: 3,
-  ballR: 2.5,
-  cellRadius: 4.5,         // in: scoring window across the shot (sideways miss)
-  cellDepth: 7.5,          // in: scoring window along the shot (short/long miss; a dropping ball has more room)
-  cellHeight: 52,          // in: goal height (README: 50-53 in)
+  capacity: 4,             // G407: a robot may control at most 4 SCORING ELEMENTS
   camHalfFovDeg: 27,       // Limelight 3A ~54 deg horizontal
   camMinDist: 45,          // README: below ~45 in the camera loses the tags
   camMaxDist: 150,
   shotSpreadDeg: 0.6, shotSpreadIn: 1.0,
   robotHalf: 9,            // 18 in robot
-  hiveHalfW: 5, hiveHalfL: 17,
 };
+
+// ============================================================================
+// BIOBUZZ field, from the Competition Manual (TU09) sections 9-10. Same frame as FieldAim: inches, origin at the
+// centre, +X toward the blue wall, +Y away from the audience. Positions read off Figures 9-2 and 10-2 (about ±2 in.).
+// ============================================================================
+const FIELD = {
+  POLLEN_R: 1.4, NECTAR_R: 1.8,                     // 2.8 in. POLLEN, 3.6 in. NECTAR
+  FRAME_X: 24.73, FRAME_HALF_DEPTH: 19.5,           // HIVE frame: 49.46 in. wide, 38.95 in. deep; robots drive under the HIVES
+  CELL_HALF_W: 10, CELL_HALF_D: 6,                  // CELL opening 20 in. wide, 12 in. deep
+  FLOWERS: [[-24, 72], [72, 24], [24, -72], [-72, -24]],
+  LOADING_ZONE: { RED: [-72, -61, 24, 47], BLUE: [61, 72, -47, -24] },   // xMin, xMax, yMin, yMax (23 x 11 in.)
+  GARDEN: { RED: [-72, -49, -72, -70], BLUE: [49, 72, 70, 72] },         // 23 x 2 in., opposite corners
+  START_UP: { RED: 'AUDIENCE', BLUE: 'FAR' },       // Figure 10-2
+  NECTAR_IN_AREA: 5,
+};
+const POINTS = { LEAVE: 3, PARK: 5, TIP: 20, IN_CELL: 2, GARDEN: 1 };
+// From a third-party rules summary (check at the practice field): 7 POLLEN don't tip, 8 do;
+// 3 NECTAR + 2 POLLEN don't, 3 NECTAR + 3 POLLEN do. Weights in POLLEN.
+const TIP = { POLLEN: 1, NECTAR: 1.8, THRESHOLD: 7.5 };
+// Your robot's share of a winning alliance score (team strategy, Roermond results)
+const BENCHMARKS = [[13, 'must-have'], [35, 'top-4 seed'], [70, 'Energizers level']];
 // ============================================================================
 // Drivetrain and odometry calibration. Names match the Pedro tuner output, so you can copy values
 // straight from pedro/Constants.java. Settings > Robot calibration overrides these in the browser.
@@ -205,9 +236,9 @@ const DRIFT = {
 // ============================================================================
 // Settings (remembered in this browser)
 // ============================================================================
-const settings = { view: 'driver', length: '120', aim: 'LIMELIGHT', tip: '25', drift: 'low', balls: '12', helpers: '1' };
+const settings = { view: 'driver', length: '120', aim: 'LIMELIGHT', start: 'auto1', drift: 'low', helpers: '1' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('biobuzz-sim-settings') || '{}')); } catch (e) {}
-const optIds = { view: 'optView', length: 'optLength', aim: 'optAim', tip: 'optTip', drift: 'optDrift', balls: 'optBalls', helpers: 'optHelpers' };
+const optIds = { view: 'optView', length: 'optLength', aim: 'optAim', start: 'optStart', drift: 'optDrift', helpers: 'optHelpers' };
 for (const [k, id] of Object.entries(optIds)) {
   const el = document.getElementById(id);
   el.value = settings[k];
@@ -223,7 +254,7 @@ function applySettings(changed) {
   document.getElementById('aimNote').textContent = settings.aim === 'ODOMETRY'
     ? 'Odometry aim: the turret points at the CELL picked with D-pad up/down, but auto-fire never passes ("goal not seen") because the real code needs a Limelight distance. Hold Cross to feed by hand.'
     : 'Limelight aim: the camera on the turret finds the upward CELL of our HIVE by itself. D-pad up/down only matters in odometry mode.';
-  if (changed === 'balls' || changed === 'length') { if (S.phase !== 'running') resetToInit(); }
+  if (changed === 'start' || changed === 'length') { if (S.phase !== 'running') resetToInit(); }
 }
 
 // ============================================================================
@@ -347,37 +378,65 @@ function resetToInit() {
     odo: { x: 0, y: 0, h: 0, hErr: 0 }, lastOdo: null, lastOdoT: 0, vF: 0, vL: 0, odoOn: true,
     t: freshTurret(),
     fly: { target: 0, rpm: 0, measured: 0 },
-    intake: 0, transfer: 0, feed: 0, held: 0, ejectT: 0,
+    intake: 0, transfer: 0, feed: 0, load: [], ejectT: 0, flowerT: 0,
     autoAim: false, lastTriangle: false, spinRpm: FLYWHEEL.DEFAULT_RPM, cell: 'FAR',
-    cellUp: Math.random() < 0.5 ? 'FAR' : 'AUDIENCE', nextTip: 0,
-    balls: [], flying: [], respawn: [], popups: [],
-    score: 0, shots: 0, telemetry: [], shotStatus: null,
+    hive: { RED: { up: FIELD.START_UP.RED, contents: ['R', 'R', 'R'] }, BLUE: { up: FIELD.START_UP.BLUE, contents: ['B', 'B', 'B'] } },
+    flowers: FIELD.FLOWERS.map(([x, y]) => ({ x, y, pollen: 4 })),
+    nectarLeft: FIELD.NECTAR_IN_AREA, nectarQueue: [], nectarAll: false,
+    balls: [], flying: [], popups: [],
+    autoPts: 0, tips: 0, made: 0, shots: 0, trips: [], tripStart: 0, telemetry: [], shotStatus: null,
     shareHeld: 0, lastShare: false, banner: null,
   };
-  if (S.alliance !== 'ANY') placeAtStart();
-  spawnBalls(+settings.balls);
+  stageField();
+}
+// Competition Manual 10.3.1. No partner or opponents: their pre-loads go in the LOADING ZONES (no-show rule).
+function stageField() {
+  const P = FIELD.POLLEN_R;
+  for (let i = 0; i < 4; i++) {
+    S.balls.push(ball('P', -72 + P + 0.1 + i * 2.85, -72 + P + 0.1));   // red GARDEN, from the red corner
+    S.balls.push(ball('P', 72 - P - 0.1 - i * 2.85, 72 - P - 0.1));     // blue GARDEN, from the blue corner
+  }
+  const lz = (al, n) => {
+    const z = FIELD.LOADING_ZONE[al], x = al === 'RED' ? z[0] + P + 0.1 : z[1] - P - 0.1, cy = (z[2] + z[3]) / 2;
+    for (let i = 0; i < n; i++) S.balls.push(ball('P', x + (i >= 4 ? (al === 'RED' ? 2.9 : -2.9) : 0), cy + ((i % 4) - 1.5) * 2.9));
+  };
+  if (S.alliance === 'ANY') return;
+  const opp = S.alliance === 'RED' ? 'BLUE' : 'RED';
+  lz(S.alliance, 4); lz(opp, 8);
+  if (settings.start === 'auto1') {
+    // Our auto: 4 pre-loads fired, HIVE tipped once, robot parked in the LOADING ZONE.
+    const H = S.hive[S.alliance];
+    for (const t of [...H.contents, 'P', 'P', 'P', 'P']) spillBall(S.alliance, H.up, t);
+    H.contents = []; H.up = H.up === 'FAR' ? 'AUDIENCE' : 'FAR';
+    S.nectarLeft--; S.balls.push(ball(S.alliance[0], ...lzSpot(S.alliance)));
+    S.autoPts = POINTS.LEAVE + POINTS.PARK + POINTS.TIP;
+  } else S.load = ['P', 'P', 'P', 'P'];
+  placeAtStart();
+}
+function ball(type, x, y, vx = 0, vy = 0) { return { type, x, y, vx, vy, r: type === 'P' ? FIELD.POLLEN_R : FIELD.NECTAR_R }; }
+function lzSpot(al) { const z = FIELD.LOADING_ZONE[al]; return [rand(z[0] + 3, z[1] - 2), rand(z[2] + 3, z[3] - 3)]; }
+function spillBall(al, cell, type) {
+  const [gx, gy] = fieldGoal(al, cell), a = rand(0, 2 * Math.PI), sp = rand(8, 35);
+  S.balls.push(ball(type, gx + rand(-6, 6), gy + rand(-4, 4), Math.cos(a) * sp, Math.sin(a) * sp));
+}
+function startSpot() {
+  if (settings.start !== 'auto1') return startPose(S.alliance);
+  const z = FIELD.LOADING_ZONE[S.alliance], cy = (z[2] + z[3]) / 2;
+  return S.alliance === 'RED' ? [z[1] + 3, cy, 0] : [z[0] - 3, cy, 180]; // partly in the zone, clear of the pre-loads
 }
 function placeAtStart() {
-  const p = startPose(S.alliance);
+  const p = startSpot();
   Object.assign(S.robot, { x: p[0], y: p[1], h: p[2], vx: 0, vy: 0, w: 0 });
   Object.assign(S.odo, { x: p[0], y: p[1], h: p[2], hErr: 0 });
   S.lastOdo = null;
 }
-function hives() {
-  return [-1, 1].map(s => ({ x: s * FIELD_AIM.HIVE_X, y: 0, hw: SIM.hiveHalfW, hh: SIM.hiveHalfL, a: 0 }));
-}
-function freeSpot(margin) {
-  for (let tries = 0; tries < 200; tries++) {
-    const x = rand(-72 + margin, 72 - margin), y = rand(-72 + margin, 72 - margin);
-    if (Math.abs(x) < FIELD_AIM.HIVE_X + SIM.hiveHalfW + 6 && Math.abs(y) < SIM.hiveHalfL + 6) continue;
-    if (Math.hypot(x - S.robot.x, y - S.robot.y) < 20) continue;
-    if (Math.abs(Math.abs(x) - 63) < 12 && Math.abs(y) < 14) continue; // keep the start spots clear
-    if (S.balls.some(b => Math.hypot(b.x - x, b.y - y) < 7)) continue;
-    return [x, y];
-  }
-  return [rand(-60, 60), rand(40, 60)];
-}
-function spawnBalls(n) { for (let i = 0; i < n; i++) { const [x, y] = freeSpot(8); S.balls.push({ x, y, vx: 0, vy: 0 }); } }
+// Things robots and balls bump into: the two HIVE frame triangles and the FLOWERS on the walls.
+function wallNormal(x, y) { return Math.abs(x) > Math.abs(y) ? [-Math.sign(x), 0] : [0, -Math.sign(y)]; }
+const OBSTACLES = [
+  ...[-1, 1].map(sx => ({ x: sx * FIELD.FRAME_X, y: 0, hw: 1, hh: FIELD.FRAME_HALF_DEPTH, a: 0 })),
+  ...FIELD.FLOWERS.map(([x, y]) => { const [nx, ny] = wallNormal(x, y); return { x: x + nx * 2.5, y: y + ny * 2.5, hw: nx ? 2.5 : 3, hh: nx ? 3 : 2.5, a: 0 }; }),
+];
+function obstacles() { return OBSTACLES; }
 
 // ============================================================================
 // Input: PS controller (standard mapping) + keyboard fallback
@@ -444,7 +503,7 @@ function initLoop(gp) {
   let changed = false;
   if (gp.circle && S.alliance !== 'RED') { S.alliance = 'RED'; changed = true; }
   if (gp.cross && S.alliance !== 'BLUE') { S.alliance = 'BLUE'; changed = true; }
-  if (changed) placeAtStart();
+  if (changed) resetToInit();
   const tl = [];
   tl.push(`Alliance: ${S.alliance}  (Circle = RED, Cross = BLUE)`);
   tl.push('Turret home = current position. Center it before INIT.');
@@ -575,7 +634,7 @@ function aimAtBearing(heading) {
 // What the Limelight on the turret sees: the upward CELL of our HIVE, or nothing.
 function limelightFix() {
   if (S.alliance === 'ANY') return null;
-  const goal = fieldGoal(S.alliance, S.cellUp);
+  const goal = fieldGoal(S.alliance, S.hive[S.alliance].up);
   const [tx0, ty0] = turretPosition(S.robot.x, S.robot.y, S.robot.h);
   const dist = Math.hypot(goal[0] - tx0, goal[1] - ty0);
   const camDir = S.robot.h - turretSign() * S.t.angle; // CCW field angle the camera faces
@@ -699,7 +758,7 @@ function physics(dt) {
     }
     if (px) { R.x += px; R.vx = 0; }
     if (py) { R.y += py; R.vy = 0; }
-    for (const hv of hives()) {
+    for (const hv of obstacles()) {
       const m = obbPush(robotObb(), hv);
       if (m) {
         R.x += m[0]; R.y += m[1];
@@ -734,20 +793,31 @@ function physics(dt) {
   F.measured = F.rpm < 5 ? 0 : F.rpm + randn() * SIM.rpmNoise;
 
   // Transfer feeds balls into the flywheel
-  if (S.held > 0 && S.transfer > 0) {
+  if (S.load.length > 0 && S.transfer > 0) {
     S.feed += S.transfer * dt / SIM.feedTimeFullPower;
     if (S.feed >= 1) { S.feed = 0; launch(); }
-  } else S.feed = S.held > 0 ? Math.max(0, S.feed + Math.min(0, S.transfer) * dt / SIM.feedTimeFullPower) : 0;
+  } else S.feed = S.load.length > 0 ? Math.max(0, S.feed + Math.min(0, S.transfer) * dt / SIM.feedTimeFullPower) : 0;
 
   // Intake reversed spits balls out the front
-  if (S.intake < -0.05 && S.held > 0) {
+  if (S.intake < -0.05 && S.load.length > 0) {
     S.ejectT += dt * (-S.intake / ROBOT.INTAKE_POWER);
     if (S.ejectT > 0.35) {
-      S.ejectT = 0; S.held--;
-      const d = SIM.robotHalf + SIM.ballR + 1;
-      S.balls.push({ x: R.x + c * d, y: R.y + s * d, vx: R.vx + c * 35 * -S.intake, vy: R.vy + s * 35 * -S.intake });
+      S.ejectT = 0;
+      const t = S.load.pop(), d = SIM.robotHalf + FIELD.POLLEN_R + 1;
+      S.balls.push(ball(t, R.x + c * d, R.y + s * d, R.vx + c * 35 * -S.intake, R.vy + s * 35 * -S.intake));
     }
   } else S.ejectT = 0;
+
+  // Intake against the bottom of a FLOWER pulls its POLLEN out, one at a time
+  S.flowerT = Math.max(0, S.flowerT - dt);
+  if (S.intake > 0.05 && S.load.length < SIM.capacity && S.flowerT === 0) {
+    for (const f of S.flowers) {
+      if (!f.pollen) continue;
+      const [nx, ny] = wallNormal(f.x, f.y), px = f.x + nx * 6.5, py = f.y + ny * 6.5;
+      const lx = (px - R.x) * c + (py - R.y) * s, ly = -(px - R.x) * s + (py - R.y) * c;
+      if (lx > SIM.robotHalf - 2 && lx < SIM.robotHalf + 3 && Math.abs(ly) < 7.5) { f.pollen--; S.load.push('P'); S.flowerT = 0.3; break; }
+    }
+  }
 
   ballPhysics(dt);
 }
@@ -770,7 +840,8 @@ function configDrift() {
 
 function launch() {
   const R = S.robot, F = S.fly;
-  S.held--; S.shots++;
+  const type = S.load.shift(); S.shots++;
+  if (!S.load.length && S.phase === 'running') { S.trips.push(S.matchTime - S.tripStart); S.tripStart = S.matchTime; }
   let dist, t;
   if (F.rpm < 900) { dist = 4 + F.rpm / 900 * 14; t = 0.25; }
   else { dist = Math.max(10, distanceForRpm(F.rpm)); t = flightTime(dist); }
@@ -778,23 +849,23 @@ function launch() {
   const dir = (R.h - turretSign() * S.t.angle + randn() * SIM.shotSpreadDeg) * D2R;
   const sp = dist / t;
   const [x0, y0] = turretPosition(R.x, R.y, R.h);
-  S.flying.push({ x0, y0, vx: R.vx + sp * Math.cos(dir), vy: R.vy + sp * Math.sin(dir), T: t, age: 0, peak: F.rpm < 900 ? 4 : 40 });
+  S.flying.push({ type, x0, y0, vx: R.vx + sp * Math.cos(dir), vy: R.vy + sp * Math.sin(dir), T: t, age: 0, peak: F.rpm < 900 ? 4 : 40 });
   F.rpm *= 1 - SIM.shotRpmDrop;
 }
 
 function ballPhysics(dt) {
   const R = S.robot, ro = robotObb();
-  const c = Math.cos(ro.a), s = Math.sin(ro.a), r = SIM.ballR;
-  const hv = hives();
+  const c = Math.cos(ro.a), s = Math.sin(ro.a);
+  const hv = obstacles();
   for (let i = S.balls.length - 1; i >= 0; i--) {
-    const b = S.balls[i];
+    const b = S.balls[i], r = b.r;
     b.x += b.vx * dt; b.y += b.vy * dt;
     const fr = Math.exp(-dt * 1.8); b.vx *= fr; b.vy *= fr;
     if (Math.hypot(b.vx, b.vy) < 0.5) { b.vx = 0; b.vy = 0; }
-    // Intake: the front face pulls balls in while the intake runs forward
+    // Intake: the front face pulls POLLEN in while the intake runs forward (our robot leaves NECTAR alone)
     const lx = (b.x - R.x) * c + (b.y - R.y) * s, ly = -(b.x - R.x) * s + (b.y - R.y) * c;
-    if (S.intake > 0.05 && S.held < SIM.capacity && lx > SIM.robotHalf - 2 && lx < SIM.robotHalf + r + 2 && Math.abs(ly) < 7.5) {
-      S.balls.splice(i, 1); S.held++; continue;
+    if (b.type === 'P' && S.intake > 0.05 && S.load.length < SIM.capacity && lx > SIM.robotHalf - 2 && lx < SIM.robotHalf + r + 2 && Math.abs(ly) < 7.5) {
+      S.balls.splice(i, 1); S.load.push('P'); continue;
     }
     const n = circleObb(b, ro, r);
     if (n) {
@@ -817,8 +888,9 @@ function ballPhysics(dt) {
   const B = S.balls;
   for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) {
     const a = B[i], b = B[j], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
-    if (d > 0 && d < 2 * r) {
-      const nx = dx / d, ny = dy / d, p = (2 * r - d) / 2;
+    const rr = a.r + b.r;
+    if (d > 0 && d < rr) {
+      const nx = dx / d, ny = dy / d, p = (rr - d) / 2;
       a.x -= nx * p; a.y -= ny * p; b.x += nx * p; b.y += ny * p;
       const rv = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
       if (rv < 0) { a.vx += rv * nx * 0.9; a.vy += rv * ny * 0.9; b.vx -= rv * nx * 0.9; b.vy -= rv * ny * 0.9; }
@@ -830,38 +902,54 @@ function ballPhysics(dt) {
     f.age += dt;
     if (f.age >= f.T) {
       S.flying.splice(i, 1);
-      const x = f.x0 + f.vx * f.T, y = f.y0 + f.vy * f.T;
-      const goal = S.alliance === 'ANY' ? null : fieldGoal(S.alliance, S.cellUp);
-      let inCell = false;
-      if (goal && f.peak > 10) {
-        // Miss split into along / across the ball's path over the ground
-        const sp = Math.hypot(f.vx, f.vy) || 1, ux = f.vx / sp, uy = f.vy / sp;
-        const ex = x - goal[0], ey = y - goal[1];
-        const along = ex * ux + ey * uy, across = -ex * uy + ey * ux;
-        inCell = (along / SIM.cellDepth) ** 2 + (across / SIM.cellRadius) ** 2 <= 1;
-        S.lastLand = { along, across };
+      const x = f.x0 + f.vx * f.T, y = f.y0 + f.vy * f.T, r = f.type === 'P' ? FIELD.POLLEN_R : FIELD.NECTAR_R;
+      let into = null;
+      if (f.peak > 10) for (const al of ['RED', 'BLUE']) {
+        const [gx, gy] = fieldGoal(al, S.hive[al].up);
+        if (Math.abs(x - gx) <= FIELD.CELL_HALF_W - r && Math.abs(y - gy) <= FIELD.CELL_HALF_D - r) into = al;
+        if (al === S.alliance) S.lastLand = { dx: x - gx, dy: y - gy };
       }
-      if (inCell) {
-        if (S.phase === 'running') S.score++;
-        S.popups.push({ x: goal[0], y: goal[1], t: S.now, text: '+1' });
-        S.respawn.push(S.now + 2.5);
-        beep(880, 0.08); rumble();
+      if (into) {
+        const H = S.hive[into];
+        H.contents.push(f.type);
+        if (into === S.alliance) { S.made++; beep(880, 0.06); }
+        const [gx, gy] = fieldGoal(into, H.up);
+        S.popups.push({ x: gx, y: gy, t: S.now, text: into === S.alliance ? '+2' : 'their CELL', miss: into !== S.alliance });
+        if (hiveWeight(H) >= TIP.THRESHOLD) tipHive(into);
       } else {
-        S.balls.push({ x: clamp(x, -70, 70), y: clamp(y, -70, 70), vx: f.vx * 0.15, vy: f.vy * 0.15 });
-        if (goal && f.peak > 10) S.popups.push({ x, y, t: S.now, text: 'miss', miss: true });
+        S.balls.push(ball(f.type, clamp(x, -70, 70), clamp(y, -70, 70), f.vx * 0.15, f.vy * 0.15));
+        if (f.peak > 10) S.popups.push({ x, y, t: S.now, text: 'miss', miss: true });
       }
     }
   }
-  // Scored balls come back onto the field near a wall
-  for (let i = S.respawn.length - 1; i >= 0; i--) {
-    if (S.now >= S.respawn[i]) {
-      S.respawn.splice(i, 1);
-      const side = Math.floor(Math.random() * 4), t = rand(-60, 60);
-      const pos = [[t, 66], [t, -66], [66, t], [-66, t]][side];
-      if (Math.abs(pos[0]) > 55 && Math.abs(pos[1]) < 14) pos[1] = 30 * Math.sign(pos[1] || 1);
-      S.balls.push({ x: pos[0], y: pos[1], vx: 0, vy: 0 });
-    }
-  }
+}
+function hiveWeight(H) { return H.contents.reduce((w, t) => w + (t === 'P' ? TIP.POLLEN : TIP.NECTAR), 0); }
+// The upward CELL drops, spills under itself, and the other CELL turns up.
+function tipHive(al) {
+  const H = S.hive[al];
+  for (const t of H.contents) spillBall(al, H.up, t);
+  H.contents = []; H.up = H.up === 'FAR' ? 'AUDIENCE' : 'FAR';
+  if (al !== S.alliance) return;
+  if (S.phase === 'running') S.tips++;
+  S.popups.push({ x: fieldGoal(al, H.up)[0], y: 0, t: S.now, text: 'TIP +20' });
+  S.banner = { text: `HIVE TIP +20 · ${H.up} CELL is up now`, t: S.now };
+  beep(520, 0.15); rumble();
+  if (S.nectarLeft > 0 && !S.nectarAll) { S.nectarLeft--; S.nectarQueue.push(S.now + 3); } // G426: one NECTAR per TIP
+}
+// Live and end-of-match points for our robot
+function points() {
+  const al = S.alliance; if (al === 'ANY') return { total: 0 };
+  const H = S.hive[al], g = FIELD.GARDEN[al], z = FIELD.LOADING_ZONE[al];
+  const inCell = H.contents.length;
+  const garden = S.balls.filter(b => b.x + b.r > g[0] && b.x - b.r < g[1] && b.y + b.r > g[2] && b.y - b.r < g[3]).length;
+  const park = robotOverlapsZone(z); // at least partly in the LOADING ZONE
+  const p = { auto: S.autoPts, tips: S.tips * POINTS.TIP, cell: inCell * POINTS.IN_CELL, inCell, garden: garden * POINTS.GARDEN, park: park ? POINTS.PARK : 0 };
+  p.total = p.auto + p.tips + p.cell + p.garden + p.park;
+  return p;
+}
+function robotOverlapsZone(z) {
+  const zone = { x: (z[0] + z[1]) / 2, y: (z[2] + z[3]) / 2, hw: (z[1] - z[0]) / 2, hh: (z[3] - z[2]) / 2, a: 0 };
+  return !!obbPush(robotObb(), zone);
 }
 
 // ============================================================================
@@ -869,18 +957,17 @@ function ballPhysics(dt) {
 // ============================================================================
 function startMatch() {
   if (S.phase !== 'init' || S.alliance === 'ANY') return;
-  S.phase = 'running'; S.matchTime = 0; S.score = 0; S.shots = 0;
-  S.nextTip = S.now + tipInterval();
+  S.phase = 'running'; S.matchTime = 0; S.tips = 0; S.made = 0; S.shots = 0; S.trips = []; S.tripStart = 0;
   // OpMode start: auto-aim off, spinRpm = DEFAULT_RPM, cell FAR, resetPoseToStart()
   S.autoAim = false; S.spinRpm = FLYWHEEL.DEFAULT_RPM; S.cell = 'FAR'; resetPoseToStart();
   beep(660, 0.15);
 }
-function tipInterval() { const t = +settings.tip; return t ? rand(t * 0.75, t * 1.2) : Infinity; }
+function bestKey() { return `biobuzz-sim-best-${settings.length}-${settings.start}`; }
 function endMatch() {
   S.phase = 'ended'; stopAll(); beep(330, 0.4);
+  S.final = points();
   if (+settings.length) {
-    const key = 'biobuzz-sim-best-' + settings.length;
-    try { if (S.score > +(localStorage.getItem(key) || 0)) localStorage.setItem(key, S.score); } catch (e) {}
+    try { if (S.final.total > +(localStorage.getItem(bestKey()) || 0)) localStorage.setItem(bestKey(), S.final.total); } catch (e) {}
   }
 }
 document.getElementById('btnStart').onclick = e => { e.target.blur(); unlockAudio(); startMatch(); };
@@ -927,13 +1014,14 @@ function frame(nowMs) {
   else if (S.phase === 'running') {
     S.matchTime += dt;
     opModeLoop(g, dt);
-    if (S.now >= S.nextTip) {
-      S.cellUp = S.cellUp === 'FAR' ? 'AUDIENCE' : 'FAR';
-      S.nextTip = S.now + tipInterval();
-      S.banner = { text: `HIVE tipped: ${S.cellUp} CELL is up`, t: S.now };
-      beep(520, 0.12);
-    }
     const len = +settings.length;
+    // Human player: NECTAR into our LOADING ZONE after each TIP, and all of it at 1:00 left (G426, G427)
+    if (len && !S.nectarAll && len - S.matchTime <= 60) {
+      S.nectarAll = true;
+      for (; S.nectarLeft > 0; S.nectarLeft--) S.nectarQueue.push(S.now + 1 + S.nectarQueue.length * 0.6);
+      S.banner = { text: '1:00 left: all NECTAR enters', t: S.now };
+    }
+    S.nectarQueue = S.nectarQueue.filter(t => { if (S.now < t) return true; S.balls.push(ball(S.alliance[0], ...lzSpot(S.alliance))); return false; });
     if (len && S.matchTime >= len) endMatch();
   } else stopAll();
 
@@ -997,35 +1085,51 @@ function render() {
   ctx.lineWidth = 2.5;
   ctx.strokeStyle = COLORS.RED; line(-73.25, -60, -73.25, 60);
   ctx.strokeStyle = COLORS.BLUE; line(73.25, -60, 73.25, 60);
-  // Start spots
+  // LOADING ZONES and GARDENS
   for (const al of ['RED', 'BLUE']) {
+    const z = FIELD.LOADING_ZONE[al], g = FIELD.GARDEN[al];
+    ctx.fillStyle = al === 'RED' ? 'rgba(229,72,77,.18)' : 'rgba(62,123,250,.18)';
+    ctx.fillRect(z[0], z[2], z[1] - z[0], z[3] - z[2]);
+    ctx.strokeStyle = COLORS[al]; ctx.lineWidth = 0.8; ctx.strokeRect(z[0], z[2], z[1] - z[0], z[3] - z[2]);
+    ctx.fillStyle = COLORS[al]; ctx.globalAlpha = 0.55; ctx.fillRect(g[0], g[2], g[1] - g[0], g[3] - g[2]); ctx.globalAlpha = 1;
+    // Start spot (match setup)
     const p = startPose(al);
-    ctx.setLineDash([2, 2]); ctx.lineWidth = 0.5; ctx.strokeStyle = COLORS[al];
-    ctx.strokeRect(p[0] - 9, p[1] - 9, 18, 18); ctx.setLineDash([]);
+    ctx.setLineDash([2, 2]); ctx.lineWidth = 0.5; ctx.strokeRect(p[0] - 9, p[1] - 9, 18, 18); ctx.setLineDash([]);
   }
-
-  drawHives();
+  // FLOWERS with the POLLEN still inside
+  for (const f of S.flowers) {
+    const [nx, ny] = wallNormal(f.x, f.y), cx = f.x + nx * 2.5, cy = f.y + ny * 2.5;
+    ctx.fillStyle = '#6b5a2a'; ctx.strokeStyle = '#d9b84a'; ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.arc(cx, cy, 3, 0, 7); ctx.fill(); ctx.stroke();
+    for (let i = 0; i < f.pollen; i++) drawBall(cx + (i - 1.5) * 1.3 * (ny ? 1 : 0), cy + (i - 1.5) * 1.3 * (nx ? 1 : 0), 0.9, 0.95, 'P');
+  }
+  // HIVE frame triangles (robots can drive between them, under the HIVES)
+  ctx.fillStyle = '#9aa0ab';
+  for (const o of OBSTACLES.slice(0, 2)) ctx.fillRect(o.x - o.hw, o.y - o.hh, o.hw * 2, o.hh * 2);
 
   // Balls on the ground
-  for (const b of S.balls) drawBall(b.x, b.y, SIM.ballR, 1);
+  for (const b of S.balls) drawBall(b.x, b.y, b.r, 1, b.type);
 
   const helpers = settings.helpers === '1';
   if (helpers && S.alliance !== 'ANY' && settings.drift !== 'off' && S.phase !== 'init') drawOdoGhost();
   drawRobot(helpers);
+  drawHives(); // overhead, drawn above the robot
 
   // Balls in the air (shadow + raised ball)
   for (const f of S.flying) {
     const u = f.age / f.T, x = f.x0 + f.vx * f.age, y = f.y0 + f.vy * f.age;
     const lift = Math.sin(Math.PI * u) * f.peak;
     ctx.fillStyle = 'rgba(0,0,0,.35)';
-    ctx.beginPath(); ctx.arc(x, y, SIM.ballR * 0.9, 0, 7); ctx.fill();
-    drawBall(x, y, SIM.ballR * (1 + lift / 60), 1);
+    const r = f.type === 'P' ? FIELD.POLLEN_R : FIELD.NECTAR_R;
+    ctx.beginPath(); ctx.arc(x, y, r * 0.9, 0, 7); ctx.fill();
+    drawBall(x, y, r * (1 + lift / 40), 1, f.type);
   }
 
   // Screen-space overlays
   screenTransform();
   labelAt(0, -79, 'AUDIENCE', '#8b92a1');
-  labelAt(-79, 0, 'RED', COLORS.RED); labelAt(79, 0, 'BLUE', COLORS.BLUE);
+  const nectar = al => S.alliance === al ? ` · ${S.nectarLeft} NECTAR left` : '';
+  labelAt(-79, 0, 'RED' + nectar('RED'), COLORS.RED); labelAt(79, 0, 'BLUE' + nectar('BLUE'), COLORS.BLUE);
   for (const p of S.popups) {
     const age = S.now - p.t; if (age > 1) continue;
     const [sx, sy] = toScreen(p.x, p.y);
@@ -1041,29 +1145,34 @@ function labelAt(x, y, text, color) {
   ctx.font = '600 11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = color; ctx.fillText(text, sx, sy); ctx.textBaseline = 'alphabetic';
 }
-function drawBall(x, y, r, a) {
+const BALL_COLORS = { P: ['#ffd43b', '#b8901a'], R: ['#e5484d', '#8f1d22'], B: ['#3e7bfa', '#1c3f8f'] };
+function drawBall(x, y, r, a, type = 'P') {
   ctx.globalAlpha = a;
-  ctx.fillStyle = '#ffd43b'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-  ctx.strokeStyle = '#b8901a'; ctx.lineWidth = 0.4; ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.fillStyle = BALL_COLORS[type][0]; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = BALL_COLORS[type][1]; ctx.lineWidth = 0.3; ctx.stroke(); ctx.globalAlpha = 1;
 }
 function drawHives() {
+  // Crossbar between the frame triangles
+  ctx.strokeStyle = 'rgba(200,205,214,.6)'; ctx.lineWidth = 1.2; line(-FIELD.FRAME_X, 0, FIELD.FRAME_X, 0);
+  const W2 = FIELD.CELL_HALF_W, D2 = FIELD.CELL_HALF_D;
   for (const al of ['RED', 'BLUE']) {
-    const x = al === 'RED' ? -FIELD_AIM.HIVE_X : FIELD_AIM.HIVE_X;
-    ctx.fillStyle = al === 'RED' ? '#5a2a2e' : '#26345a';
-    ctx.strokeStyle = COLORS[al]; ctx.lineWidth = 0.8;
-    ctx.fillRect(x - SIM.hiveHalfW, -SIM.hiveHalfL, SIM.hiveHalfW * 2, SIM.hiveHalfL * 2);
-    ctx.strokeRect(x - SIM.hiveHalfW, -SIM.hiveHalfL, SIM.hiveHalfW * 2, SIM.hiveHalfL * 2);
+    const H = S.hive[al], x = al === 'RED' ? -FIELD_AIM.HIVE_X : FIELD_AIM.HIVE_X;
     for (const cell of ['FAR', 'AUDIENCE']) {
-      const [gx, gy] = fieldGoal(al, cell), up = cell === S.cellUp;
-      ctx.beginPath(); ctx.arc(gx, gy, up ? SIM.cellRadius : 3, 0, 7);
-      ctx.fillStyle = up ? COLORS[al] : 'rgba(255,255,255,.08)'; ctx.fill();
-      ctx.lineWidth = up ? 1.2 : 0.5; ctx.strokeStyle = up ? '#fff' : 'rgba(255,255,255,.3)'; ctx.stroke();
+      const [gx, gy] = fieldGoal(al, cell), up = cell === H.up;
+      ctx.globalAlpha = up ? 0.85 : 0.35;
+      ctx.fillStyle = al === 'RED' ? '#5a2a2e' : '#26345a';
+      ctx.fillRect(gx - W2, gy - D2, W2 * 2, D2 * 2);
+      ctx.lineWidth = up ? 1.1 : 0.5; ctx.strokeStyle = up ? COLORS[al] : 'rgba(255,255,255,.3)';
+      ctx.strokeRect(gx - W2, gy - D2, W2 * 2, D2 * 2);
+      ctx.globalAlpha = 1;
+      if (up) H.contents.forEach((t, i) => drawBall(gx - W2 + 2.5 + (i % 6) * 3, gy - D2 + 2.5 + Math.floor(i / 6) * 3, t === 'P' ? 1.3 : 1.6, 1, t));
     }
+    ctx.strokeStyle = 'rgba(200,205,214,.5)'; ctx.lineWidth = 0.8; line(x, -FIELD_AIM.CELL_Y + D2, x, FIELD_AIM.CELL_Y - D2);
     // Which cell the robot thinks is up (odometry aim only)
     if (al === S.alliance && settings.aim === 'ODOMETRY' && S.phase !== 'init') {
       const [gx, gy] = fieldGoal(al, S.cell);
       ctx.setLineDash([1.5, 1.5]); ctx.strokeStyle = '#ffd43b'; ctx.lineWidth = 0.6;
-      ctx.beginPath(); ctx.arc(gx, gy, SIM.cellRadius + 2, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeRect(gx - W2 - 1.5, gy - D2 - 1.5, W2 * 2 + 3, D2 * 2 + 3); ctx.setLineDash([]);
     }
   }
 }
@@ -1109,7 +1218,7 @@ function drawRobot(helpers) {
   ctx.fillStyle = '#111';
   for (const [x, y] of [[4, 6], [4, -6], [-5, 6], [-5, -6]]) ctx.fillRect(x - 2, y - 1, 4, 2);
   // Stored balls
-  for (let i = 0; i < S.held; i++) drawBall(-4, 4 - i * 4, 1.6, 0.95);
+  S.load.forEach((t, i) => drawBall(-4.5 + (i >> 1) * 3.2, (i & 1 ? -3 : 3), 1.4, 0.95, t));
   // Turret (clockwise positive in robot frame = negative rotation in this CCW frame)
   ctx.rotate(-turretSign() * T.angle * D2R);
   ctx.fillStyle = '#8b92a1'; ctx.beginPath(); ctx.arc(0, 0, 4.2, 0, 7); ctx.fill();
@@ -1136,10 +1245,12 @@ function drawHud() {
   ctx.fillText(timeText, 16, 12);
   ctx.font = '600 13px system-ui'; ctx.fillStyle = '#8b92a1';
   ctx.fillText(S.phase === 'init' ? 'INIT' : S.phase === 'ended' ? 'MATCH OVER' : len ? 'TELEOP' : 'FREE PRACTICE', 16, 42);
+  const pts = S.phase === 'ended' ? S.final : points();
   ctx.textAlign = 'right'; ctx.font = '700 26px system-ui'; ctx.fillStyle = COLORS[S.alliance];
-  ctx.fillText(String(S.score), W - 16, 12);
+  ctx.fillText(String(pts.total), W - 16, 12);
   ctx.font = '600 13px system-ui'; ctx.fillStyle = '#8b92a1';
-  ctx.fillText(`scored · ${S.held}/${SIM.capacity} held`, W - 16, 42);
+  const hv = S.alliance === 'ANY' ? null : S.hive[S.alliance];
+  ctx.fillText(`pts · ${S.tips} tips · CELL ${hv ? hiveWeight(hv).toFixed(1) : 0}/${TIP.THRESHOLD} · ${S.load.length}/${SIM.capacity} held`, W - 16, 42);
 
   // Bottom: auto-aim + shot status + flywheel bar
   if (S.phase === 'running') {
@@ -1173,7 +1284,7 @@ function drawHud() {
     ctx.textAlign = 'center'; ctx.font = '600 16px system-ui';
     const msg = S.phase === 'init'
       ? (S.alliance === 'ANY' ? 'INIT: press Circle for RED or Cross for BLUE' : `INIT: ${S.alliance} alliance. Press Share (or Enter) to start`)
-      : `Match over: ${S.score} scored from ${S.shots} shots. Press Share (or Enter) for a new match`;
+      : `Match over: ${S.final.total} pts (${S.final.auto ? `auto ${S.final.auto} + ` : ''}${S.tips} tips ${S.final.tips} + CELL ${S.final.cell} + GARDEN ${S.final.garden} + PARK ${S.final.park}). Share = new match`;
     const tw = ctx.measureText(msg).width + 32;
     ctx.fillStyle = 'rgba(23,26,33,.92)'; const my = Math.min(H - 46, view.cy + 80 * view.s + 12);
     roundRect(W / 2 - tw / 2, my, tw, 36, 18); ctx.fill();
@@ -1223,16 +1334,23 @@ function updatePanel(g, pad) {
   } else { dot.classList.remove('on'); txt.textContent = 'No controller: connect a PS controller and press any button. Keyboard works too.'; }
 
   document.getElementById('telemetry').textContent = S.telemetry.join('\n');
-  document.getElementById('sScore').textContent = S.score;
-  document.getElementById('sShots').textContent = S.shots;
-  document.getElementById('sAcc').textContent = S.shots ? Math.round(100 * S.score / S.shots) + '%' : '–';
-  let best = 0; try { best = +(localStorage.getItem('biobuzz-sim-best-' + settings.length) || 0); } catch (e) {}
+  const pts = S.phase === 'ended' ? S.final : points();
+  document.getElementById('sScore').textContent = pts.total;
+  document.getElementById('sTips').textContent = S.tips;
+  document.getElementById('sAcc').textContent = S.shots ? `${S.made}/${S.shots}` : '–';
+  let best = 0; try { best = +(localStorage.getItem(bestKey()) || 0); } catch (e) {}
+  const reached = BENCHMARKS.filter(([v]) => pts.total >= v).pop();
+  const next = BENCHMARKS.find(([v]) => pts.total < v);
+  const avgTrip = S.trips.length ? S.trips.reduce((a, b) => a + b, 0) / S.trips.length : 0;
+  document.getElementById('bench').textContent =
+    (reached ? `${reached[1]} reached (${reached[0]}+). ` : '') + (next ? `Next: ${next[1]} at ${next[0]} pts. ` : '') +
+    (S.trips.length ? `Trips: ${S.trips.length}, average ${avgTrip.toFixed(1)} s (goal about 20 s).` : '');
   document.getElementById('sBest').textContent = +settings.length ? best : '–';
   const btn = document.getElementById('btnStart');
   btn.disabled = S.phase !== 'init' || S.alliance === 'ANY';
   btn.style.opacity = btn.disabled ? 0.5 : 1;
   document.getElementById('phaseNote').textContent = S.phase === 'init'
-    ? (S.alliance === 'ANY' ? 'INIT: pick an alliance with Circle (RED) or Cross (BLUE).' : `INIT: ${S.alliance}. The robot sits at its start spot.`)
+    ? (S.alliance === 'ANY' ? 'INIT: pick an alliance with Circle (RED) or Cross (BLUE).' : (settings.start === 'auto1' ? `INIT: ${S.alliance}. Auto is done: 1 TIP, robot parked in the LOADING ZONE.` : `INIT: ${S.alliance}. Robot at its start spot with 4 pre-loads.`))
     : S.phase === 'running' ? 'Match running. Hold Share for 1 s to go back to INIT.' : 'Match over.';
 }
 

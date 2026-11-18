@@ -36,7 +36,38 @@ Taken from `BIOBUZZ.java`, `BiobuzzRobot.java`, `TurretController.java`, `ShotTa
 - Field coordinates, HIVE / CELL positions and alliance start spots from `FieldAim`
 - Odometry aim (Settings): the turret aims at the CELL picked with the D-pad. As on the robot, auto-fire never passes in that mode because it needs a Limelight distance.
 
-These are guesses (the `SIM` block at the top of the script): flywheel spin-up and RPM drop per shot, HIVE footprint, ball size, capacity (3), and the CELL scoring window. **If the Java constants change, update the matching blocks at the top of the `<script>` in `index.html`.**
+The field and game pieces follow the Competition Manual (TU09) in the `FIELD` block. Guesses are in the `SIM` block: flywheel spin-up and RPM drop per shot. **If the Java constants change, update the matching blocks at the top of the `<script>` in `index.html`.**
+
+## Field, game pieces and scoring
+
+These follow the BIOBUZZ Competition Manual (TU09):
+
+- **Game pieces:** 40 POLLEN (2.8 in.), plus 8 red and 8 blue NECTAR (3.6 in.).
+- **Staging:** 4 POLLEN in each FLOWER, 4 in each GARDEN and 4 pre-loaded per robot. Each upward CELL starts with 3 NECTAR, and each ALLIANCE AREA holds 5 NECTAR.
+- **Missing robots:** practice has no partner or opponents, so their pre-loads sit in the LOADING ZONES, as the manual does for robots that don't show up.
+- **Robot limit:** 4 game pieces at a time (G407). Our robot only collects POLLEN.
+- **Collecting from a FLOWER:** POLLEN comes out of the bottom when you drive the intake into it.
+- **HIVE:**
+  - Robots can drive under the HIVES. The frame triangles stand at x = ±24.7 in.
+  - The CELL opening is 20 × 12 in. seen from above.
+  - A tip spills the CELL under itself and turns the other CELL up, so the target switches ends.
+- **Tipping (third-party rules summary, check it at the practice field):** 7 POLLEN don't tip, 8 do. 3 NECTAR + 2 POLLEN don't, 3 NECTAR + 3 POLLEN do. The game weighs NECTAR as 1.8 POLLEN, with a threshold of 7.5.
+- **Human player:** after each of our tips, one NECTAR goes into our LOADING ZONE. All remaining NECTAR enters at 1:00.
+- **Points for your robot:**
+
+  | Action | Points |
+  | --- | --- |
+  | TIP | 20 |
+  | Ball left in the upward CELL at the end | 2 each |
+  | GARDEN | 1 each |
+  | PARK in the LOADING ZONE | 5 |
+
+  FLOWERS and ranking points aren't scored.
+- **Start from:**
+  - *After a 1-tip auto:* counts 28 auto points (LEAVE + PARK + TIP). The robot starts parked in the LOADING ZONE.
+  - *Match setup:* the robot holds its 4 pre-loads.
+
+The side panel compares your score with the strategy benchmarks for your own robot: 13 (must-have), 35 (top-4 seed) and 70 (Energizers level). It also shows the average trip time, where a trip ends when the robot fires its last ball; the goal is about 20 s.
 
 ## Tuning the driving to the real robot
 
