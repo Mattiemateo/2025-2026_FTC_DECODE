@@ -36,7 +36,25 @@ Taken from `BIOBUZZ.java`, `BiobuzzRobot.java`, `TurretController.java`, `ShotTa
 - Field coordinates, HIVE / CELL positions and alliance start spots from `FieldAim`
 - Odometry aim (Settings): the turret aims at the CELL picked with the D-pad. As on the robot, auto-fire never passes in that mode because it needs a Limelight distance.
 
-These are guesses (the `SIM` block at the top of the script): robot speed and acceleration, flywheel spin-up and RPM drop per shot, HIVE footprint, ball size, capacity (3), and the CELL scoring window. **If the Java constants change, update the matching blocks at the top of the `<script>` in `index.html`.**
+These are guesses (the `SIM` block at the top of the script): flywheel spin-up and RPM drop per shot, HIVE footprint, ball size, capacity (3), and the CELL scoring window. **If the Java constants change, update the matching blocks at the top of the `<script>` in `index.html`.**
+
+## Tuning the driving to the real robot
+
+Driving speed, braking and turning come from the `DRIVE_DEFAULTS` block at the top of the script. Its names match the Pedro tuner output, and the values are guesses until tuning is done. Once the tuners have run, update the numbers in one of two ways:
+
+- **In the game:** open *Robot calibration* in the side panel. Paste the Foresight Tuner output, the Two Wheel Tuner output, or all of `pedro/Constants.java`, and press **Apply**. Or type the numbers in. They are saved in that browser only; **Reset to defaults** goes back to the file.
+- **For everyone:** edit `DRIVE_DEFAULTS` in `index.html` and commit.
+
+| Value | From |
+| --- | --- |
+| `maxAchievableForwardVelocity`, `maxAchievableStrafeVelocity` | Foresight Tuner: top speed at full power (the TeleOp drives at 80% of this) |
+| `naturalForwardDeceleration`, `naturalStrafeDeceleration` | Foresight Tuner: these are measured **coasting** (FLOAT), so the game uses them only as the lowest braking value and for the strafe/forward ratio |
+| `brakeDeceleration` | Measure it: the TeleOp uses BRAKE. Drive at speed *v*, let go, measure the stopping distance *d*: *v*² ÷ (2*d*) |
+| `maxTurnRate` | Measure it: spin at full right stick for 5 s, count turns: turns × 360 ÷ 5 × 1.25 (the 1.25 undoes the TeleOp's 80%) |
+| `accelerationTime` | Seconds from standstill to full speed (stopwatch or video) |
+| `forwardTicksToInches`, `strafeTicksToInches` | Two Wheel Tuner (`TwoWheelConfig`) |
+
+**Odometry:** the robot uses two goBILDA 4-Bar pods plus the Control Hub IMU, with no Pinpoint. With *Odometry drift* set to **From ticks-to-inches**, the simulated pods count like stock 4-Bar pods (0.001979 in/tick) and are converted with your ticks-to-inches values. A wrong value then shows up as odometry drift, which affects odometry aim and the shot lead. For example, the current `strafeTicksToInches` (0.00357) makes strafing read 1.8× too far. Heading comes from the IMU and barely drifts.
 
 ## Settings
 
@@ -48,7 +66,6 @@ Change these in the side panel:
 - HIVE tipping
 - Odometry drift (use Options to re-zero)
 - Number of balls
-- Robot top speed
 - Aim helpers (camera cone, aim line, landing spot): turn off for match realism
 
 Best scores are stored in the browser.
