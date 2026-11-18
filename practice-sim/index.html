@@ -99,6 +99,8 @@
       <option value="setup">Match setup (4 pre-loads, HIVE as staged)</option></select></label>
     <label class="set">Odometry drift <select id="optDrift">
       <option value="off">Off</option><option value="low">Low</option><option value="high">High</option><option value="config" id="optDriftConfig">From ticks-to-inches</option></select></label>
+    <label class="set">Belly ball <select id="optBelly">
+      <option value="1">Real robot: shoots 3 of 4, one stays in</option><option value="0">Fixed: shoots all 4</option></select></label>
     <label class="set">Aim helpers <select id="optHelpers">
       <option value="1">Show (camera cone, aim line, landing spot)</option><option value="0">Hide (match realism)</option></select></label>
     <div class="note" id="aimNote"></div>
@@ -181,6 +183,8 @@ const SIM = {
   flySpinUpTau: 0.3, flyCoastTau: 2.5, shotRpmDrop: 0.05, rpmNoise: 6,
   feedTimeFullPower: 0.2,  // s per ball at transfer power 1
   capacity: 4,             // G407: a robot may control at most 4 SCORING ELEMENTS
+  bellyBalls: 1,           // real robot quirk: it holds 4 but the transfer can't reach the last one
+  tipSeconds: [2, 3],      // a HIVE TIP reportedly takes 2-3 s from trigger to the damper landing
   camHalfFovDeg: 27,       // Limelight 3A ~54 deg horizontal
   camMinDist: 45,          // README: below ~45 in the camera loses the tags
   camMaxDist: 150,
@@ -236,9 +240,9 @@ const DRIFT = {
 // ============================================================================
 // Settings (remembered in this browser)
 // ============================================================================
-const settings = { view: 'driver', length: '120', aim: 'LIMELIGHT', start: 'auto1', drift: 'low', helpers: '1' };
+const settings = { view: 'driver', length: '120', aim: 'LIMELIGHT', start: 'auto1', drift: 'low', belly: '1', helpers: '1' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('biobuzz-sim-settings') || '{}')); } catch (e) {}
-const optIds = { view: 'optView', length: 'optLength', aim: 'optAim', start: 'optStart', drift: 'optDrift', helpers: 'optHelpers' };
+const optIds = { view: 'optView', length: 'optLength', aim: 'optAim', start: 'optStart', drift: 'optDrift', belly: 'optBelly', helpers: 'optHelpers' };
 for (const [k, id] of Object.entries(optIds)) {
   const el = document.getElementById(id);
   el.value = settings[k];
@@ -254,7 +258,7 @@ function applySettings(changed) {
   document.getElementById('aimNote').textContent = settings.aim === 'ODOMETRY'
     ? 'Odometry aim: the turret points at the CELL picked with D-pad up/down, but auto-fire never passes ("goal not seen") because the real code needs a Limelight distance. Hold Cross to feed by hand.'
     : 'Limelight aim: the camera on the turret finds the upward CELL of our HIVE by itself. D-pad up/down only matters in odometry mode.';
-  if (changed === 'start' || changed === 'length') { if (S.phase !== 'running') resetToInit(); }
+  if (changed === 'start' || changed === 'length' || changed === 'belly') { if (S.phase !== 'running') resetToInit(); }
 }
 
 // ============================================================================
@@ -406,7 +410,9 @@ function stageField() {
   if (settings.start === 'auto1') {
     // Our auto: 4 pre-loads fired, HIVE tipped once, robot parked in the LOADING ZONE.
     const H = S.hive[S.alliance];
-    for (const t of [...H.contents, 'P', 'P', 'P', 'P']) spillBall(S.alliance, H.up, t);
+    const fired = 4 - bellyBalls();
+    S.load = Array(4 - fired).fill('P');
+    for (const t of [...H.contents, ...Array(fired).fill('P')]) spillBall(S.alliance, H.up, t);
     H.contents = []; H.up = H.up === 'FAR' ? 'AUDIENCE' : 'FAR';
     S.nectarLeft--; S.balls.push(ball(S.alliance[0], ...lzSpot(S.alliance)));
     S.autoPts = POINTS.LEAVE + POINTS.PARK + POINTS.TIP;
@@ -634,6 +640,7 @@ function aimAtBearing(heading) {
 // What the Limelight on the turret sees: the upward CELL of our HIVE, or nothing.
 function limelightFix() {
   if (S.alliance === 'ANY') return null;
+  if (S.hive[S.alliance].tipping) return null; // the tags are moving: no stable fix
   const goal = fieldGoal(S.alliance, S.hive[S.alliance].up);
   const [tx0, ty0] = turretPosition(S.robot.x, S.robot.y, S.robot.h);
   const dist = Math.hypot(goal[0] - tx0, goal[1] - ty0);
@@ -793,10 +800,10 @@ function physics(dt) {
   F.measured = F.rpm < 5 ? 0 : F.rpm + randn() * SIM.rpmNoise;
 
   // Transfer feeds balls into the flywheel
-  if (S.load.length > 0 && S.transfer > 0) {
+  if (shootable() > 0 && S.transfer > 0) {
     S.feed += S.transfer * dt / SIM.feedTimeFullPower;
     if (S.feed >= 1) { S.feed = 0; launch(); }
-  } else S.feed = S.load.length > 0 ? Math.max(0, S.feed + Math.min(0, S.transfer) * dt / SIM.feedTimeFullPower) : 0;
+  } else S.feed = shootable() > 0 ? Math.max(0, S.feed + Math.min(0, S.transfer) * dt / SIM.feedTimeFullPower) : 0;
 
   // Intake reversed spits balls out the front
   if (S.intake < -0.05 && S.load.length > 0) {
@@ -838,10 +845,13 @@ function configDrift() {
   return { fwd: DRIVE.forwardTicksToInches / POD_INCHES_PER_TICK, str: DRIVE.strafeTicksToInches / POD_INCHES_PER_TICK, hdg: 0.002 };
 }
 
+// With the belly quirk the transfer can't reach the last ball, so it stays in the robot.
+function bellyBalls() { return settings.belly === '1' ? SIM.bellyBalls : 0; }
+function shootable() { return Math.max(0, S.load.length - bellyBalls()); }
 function launch() {
   const R = S.robot, F = S.fly;
   const type = S.load.shift(); S.shots++;
-  if (!S.load.length && S.phase === 'running') { S.trips.push(S.matchTime - S.tripStart); S.tripStart = S.matchTime; }
+  if (!shootable() && S.phase === 'running') { S.trips.push(S.matchTime - S.tripStart); S.tripStart = S.matchTime; }
   let dist, t;
   if (F.rpm < 900) { dist = 4 + F.rpm / 900 * 14; t = 0.25; }
   else { dist = Math.max(10, distanceForRpm(F.rpm)); t = flightTime(dist); }
@@ -905,6 +915,7 @@ function ballPhysics(dt) {
       const x = f.x0 + f.vx * f.T, y = f.y0 + f.vy * f.T, r = f.type === 'P' ? FIELD.POLLEN_R : FIELD.NECTAR_R;
       let into = null;
       if (f.peak > 10) for (const al of ['RED', 'BLUE']) {
+        if (S.hive[al].tipping) continue; // a moving CELL doesn't catch balls
         const [gx, gy] = fieldGoal(al, S.hive[al].up);
         if (Math.abs(x - gx) <= FIELD.CELL_HALF_W - r && Math.abs(y - gy) <= FIELD.CELL_HALF_D - r) into = al;
         if (al === S.alliance) S.lastLand = { dx: x - gx, dy: y - gy };
@@ -915,7 +926,7 @@ function ballPhysics(dt) {
         if (into === S.alliance) { S.made++; beep(880, 0.06); }
         const [gx, gy] = fieldGoal(into, H.up);
         S.popups.push({ x: gx, y: gy, t: S.now, text: into === S.alliance ? '+2' : 'their CELL', miss: into !== S.alliance });
-        if (hiveWeight(H) >= TIP.THRESHOLD) tipHive(into);
+        if (hiveWeight(H) >= TIP.THRESHOLD && !H.tipping) startTip(into);
       } else {
         S.balls.push(ball(f.type, clamp(x, -70, 70), clamp(y, -70, 70), f.vx * 0.15, f.vy * 0.15));
         if (f.peak > 10) S.popups.push({ x, y, t: S.now, text: 'miss', miss: true });
@@ -924,6 +935,18 @@ function ballPhysics(dt) {
   }
 }
 function hiveWeight(H) { return H.contents.reduce((w, t) => w + (t === 'P' ? TIP.POLLEN : TIP.NECTAR), 0); }
+// Enough weight starts the TIP; it lands (and counts) a few seconds later.
+function startTip(al) {
+  const H = S.hive[al];
+  H.tipping = { from: S.now, until: S.now + rand(SIM.tipSeconds[0], SIM.tipSeconds[1]) };
+  if (al === S.alliance) S.banner = { text: 'HIVE tipping…', t: S.now };
+}
+function updateTips() {
+  for (const al of ['RED', 'BLUE']) {
+    const H = S.hive[al];
+    if (H.tipping && S.now >= H.tipping.until) { H.tipping = null; tipHive(al); }
+  }
+}
 // The upward CELL drops, spills under itself, and the other CELL turns up.
 function tipHive(al) {
   const H = S.hive[al];
@@ -1027,6 +1050,7 @@ function frame(nowMs) {
 
   const steps = 4;
   for (let i = 0; i < steps; i++) { S.now += dt / steps; physics(dt / steps); }
+  updateTips();
 
   render();
   updatePanel(g, pad);
@@ -1159,7 +1183,7 @@ function drawHives() {
     const H = S.hive[al], x = al === 'RED' ? -FIELD_AIM.HIVE_X : FIELD_AIM.HIVE_X;
     for (const cell of ['FAR', 'AUDIENCE']) {
       const [gx, gy] = fieldGoal(al, cell), up = cell === H.up;
-      ctx.globalAlpha = up ? 0.85 : 0.35;
+      ctx.globalAlpha = H.tipping ? 0.55 : up ? 0.85 : 0.35;
       ctx.fillStyle = al === 'RED' ? '#5a2a2e' : '#26345a';
       ctx.fillRect(gx - W2, gy - D2, W2 * 2, D2 * 2);
       ctx.lineWidth = up ? 1.1 : 0.5; ctx.strokeStyle = up ? COLORS[al] : 'rgba(255,255,255,.3)';
@@ -1168,6 +1192,10 @@ function drawHives() {
       if (up) H.contents.forEach((t, i) => drawBall(gx - W2 + 2.5 + (i % 6) * 3, gy - D2 + 2.5 + Math.floor(i / 6) * 3, t === 'P' ? 1.3 : 1.6, 1, t));
     }
     ctx.strokeStyle = 'rgba(200,205,214,.5)'; ctx.lineWidth = 0.8; line(x, -FIELD_AIM.CELL_Y + D2, x, FIELD_AIM.CELL_Y - D2);
+    if (H.tipping) { // progress bar along the HIVE arm while it swings over
+      const u = clamp((S.now - H.tipping.from) / (H.tipping.until - H.tipping.from), 0, 1), [, gy] = fieldGoal(al, H.up);
+      ctx.strokeStyle = '#f5a524'; ctx.lineWidth = 2; line(x, gy, x, gy - Math.sign(gy) * 2 * FIELD_AIM.CELL_Y * u);
+    }
     // Which cell the robot thinks is up (odometry aim only)
     if (al === S.alliance && settings.aim === 'ODOMETRY' && S.phase !== 'init') {
       const [gx, gy] = fieldGoal(al, S.cell);
@@ -1218,7 +1246,7 @@ function drawRobot(helpers) {
   ctx.fillStyle = '#111';
   for (const [x, y] of [[4, 6], [4, -6], [-5, 6], [-5, -6]]) ctx.fillRect(x - 2, y - 1, 4, 2);
   // Stored balls
-  S.load.forEach((t, i) => drawBall(-4.5 + (i >> 1) * 3.2, (i & 1 ? -3 : 3), 1.4, 0.95, t));
+  S.load.forEach((t, i) => drawBall(-4.5 + (i >> 1) * 3.2, (i & 1 ? -3 : 3), 1.4, i < bellyBalls() ? 0.45 : 0.95, t));
   // Turret (clockwise positive in robot frame = negative rotation in this CCW frame)
   ctx.rotate(-turretSign() * T.angle * D2R);
   ctx.fillStyle = '#8b92a1'; ctx.beginPath(); ctx.arc(0, 0, 4.2, 0, 7); ctx.fill();

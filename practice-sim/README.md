@@ -52,6 +52,8 @@ These follow the BIOBUZZ Competition Manual (TU09):
   - The CELL opening is 20 × 12 in. seen from above.
   - A tip spills the CELL under itself and turns the other CELL up, so the target switches ends.
 - **Tipping (third-party rules summary, check it at the practice field):** 7 POLLEN don't tip, 8 do. 3 NECTAR + 2 POLLEN don't, 3 NECTAR + 3 POLLEN do. The game weighs NECTAR as 1.8 POLLEN, with a threshold of 7.5.
+- **Belly ball (real-robot quirk, Settings):** the robot holds 4 but can only shoot 3; the last one stays in. It is drawn faded on the robot, and you can still spit it out with L2. Set *Belly ball* to *Fixed* to see what fixing it would gain.
+- **Tip time:** a tip reportedly takes 2–3 s. While the HIVE swings, balls don't go in, the Limelight loses the tags, and the 20 points count when it lands.
 - **Human player:** after each of our tips, one NECTAR goes into our LOADING ZONE. All remaining NECTAR enters at 1:00.
 - **Points for your robot:**
 
