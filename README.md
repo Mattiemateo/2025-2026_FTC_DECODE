@@ -45,6 +45,7 @@ The alliance sets the odometry start spot and which HIVE auto-aim targets. Witho
 | Triangle | Toggle auto-aim on/off (starts off; bumpers are ignored while it is on). While on, the flywheel pre-spins to the RPM for the current distance. |
 | D-pad up / down | The FAR / AUDIENCE cell of our HIVE is tipped up (auto-aim target) |
 | Options | Robot is back at its start spot: re-zero odometry there |
+| (rumble) | A short buzz (`READY_RUMBLE_MS`, 200 ms) when the shot turns READY with auto-aim ON and Square not held: press Square now. It won't buzz again until READY has been off for `READY_REARM_SEC` (0.5 s), so a flickering RPM check doesn't spam it. |
 
 Stopping the OpMode on the Driver Station stops all motors. There is no slow-drive mode or stop-all button.
 

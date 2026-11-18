@@ -3,6 +3,7 @@ package org.firstinspires.ftc.teamcode;
 import com.pedropathing.math.Pose;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
 /**
  * BIOBUZZ TeleOp (gamepad 1).
@@ -15,6 +16,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
  * Cross/Circle: transfer forward/reverse (manual, e.g. to clear a jam)
  * D-pad up/down: FAR / AUDIENCE cell is tipped up (odometry aim only)
  * Options: robot is back at its start spot, re-zero odometry there
+ * Rumble: a short buzz when the shot turns READY (auto-aim ON, Square not held)
  */
 @TeleOp(name = "BIOBUZZ", group = "BIOBUZZ")
 public class BIOBUZZ extends LinearOpMode {
@@ -23,8 +25,13 @@ public class BIOBUZZ extends LinearOpMode {
     public static double AIM_TOLERANCE_DEG = 2.0;
     public static double RPM_TOLERANCE = 0.03; // fraction of the target RPM
     public static double MAX_TARGET_AGE_SEC = 0.2;
+    // Rumble when the shot turns READY, so the driver feels when to press Square (0 = off).
+    public static int READY_RUMBLE_MS = 200;
+    // READY must have been off this long before it buzzes again, so a flickering RPM check doesn't spam.
+    public static double READY_REARM_SEC = 0.5;
 
     private final BiobuzzRobot robot = new BiobuzzRobot();
+    private final ElapsedTime sinceReady = new ElapsedTime();
 
     @Override
     public void runOpMode() {
@@ -80,6 +87,10 @@ public class BIOBUZZ extends LinearOpMode {
                     boolean fire = gamepad1.square && blocker == null;
                     robot.transfer.setPower(gamepad1.square ? (fire ? BiobuzzRobot.TRANSFER_POWER : 0) : manualTransfer);
                     telemetry.addData("Shot", blocker == null ? "READY" : "WAIT: " + blocker);
+                    if (blocker == null) {
+                        if (readyRumble(gamepad1.square, sinceReady.seconds())) gamepad1.rumble(READY_RUMBLE_MS);
+                        sinceReady.reset();
+                    }
                 } else {
                     robot.flywheel.setTargetRPM(gamepad1.square ? FlywheelController.DEFAULT_RPM : 0);
                     robot.transfer.setPower(manualTransfer);
@@ -110,6 +121,14 @@ public class BIOBUZZ extends LinearOpMode {
             return String.format("rpm %.0f/%.0f", rpm, targetRpm);
         }
         return null;
+    }
+
+    /**
+     * Whether the shot turning READY should buzz the gamepad: only after READY was off for
+     * READY_REARM_SEC, and not while Square is held (the robot is already shooting by itself).
+     */
+    static boolean readyRumble(boolean shooting, double secondsSinceReady) {
+        return READY_RUMBLE_MS > 0 && !shooting && secondsSinceReady >= READY_REARM_SEC;
     }
 
     private boolean hasAlliance() {

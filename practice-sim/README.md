@@ -24,6 +24,7 @@ Hold Share for 1 second during a match to go back to INIT. Share is a simulator-
 | Cross / Circle | Transfer forward / reverse | Z / X |
 | D-pad ↑ / ↓ | FAR / AUDIENCE CELL is up (odometry aim) | ↑ / ↓ |
 | Options | Re-zero odometry at the start spot | O |
+| (rumble) | A 200 ms buzz when the shot turns READY with auto-aim on and Square not held, as on the robot. The HUD's READY badge pulses too, in case the browser can't rumble the controller. | |
 
 ## What matches the robot code
 
