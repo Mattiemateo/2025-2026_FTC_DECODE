@@ -197,6 +197,21 @@ public class BIOBUZZTest {
     }
 
     @Test
+    public void readyRumbleBuzzesOnceWhenTheShotTurnsReady() {
+        assertTrue(BIOBUZZ.readyRumble(false, 10)); // just turned READY
+        assertFalse(BIOBUZZ.readyRumble(false, 0.02)); // was READY last loop too: no repeat
+        assertFalse(BIOBUZZ.readyRumble(false, BIOBUZZ.READY_REARM_SEC / 2)); // short flicker
+        assertFalse(BIOBUZZ.readyRumble(true, 10)); // Square held: already shooting
+        int original = BIOBUZZ.READY_RUMBLE_MS;
+        try {
+            BIOBUZZ.READY_RUMBLE_MS = 0;
+            assertFalse(BIOBUZZ.readyRumble(false, 10)); // switched off
+        } finally {
+            BIOBUZZ.READY_RUMBLE_MS = original;
+        }
+    }
+
+    @Test
     public void odometryVelocityIsTurnedIntoTheRobotFrame() {
         // Facing +Y (90 deg) and moving +Y at 10 in/s = straight forward.
         double[] v = BiobuzzRobot.robotFrameVelocity(0, 1, Math.PI / 2, 0.1);
