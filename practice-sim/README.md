@@ -98,7 +98,11 @@ The levels are tuned to the Roermond numbers in the team strategy: about 1 teleo
 
 ## Tuning the driving to the real robot
 
-Driving speed, braking and turning come from the `DRIVE_DEFAULTS` block at the top of the script. Its names match the Pedro tuner output, and the values are guesses until tuning is done. Once the tuners have run, update the numbers in one of two ways:
+Driving speed, braking and turning come from the `DRIVE_DEFAULTS` block at the top of the script. Its names match the Pedro tuner output. The speeds are still guesses; the odometry values are the tuned ones from 2026-11-19.
+
+**Quickest way to match the robot:** run **BIOBUZZ Drive Feel Test** on the robot. It needs about 4 tiles of clear floor around the start spot; press Cross for each of its 5 full-power runs. Then copy its last telemetry lines (`maxAchievableForwardVelocity: …`, `brakeDeceleration: …` and so on) into *Robot calibration* and press Apply. If a run says *STILL SPEEDING UP*, raise `RUN_IN` (or `SPIN_SEC` for the spin) and run it again.
+
+You can also update the numbers in one of two ways:
 
 - **In the game:** open *Robot calibration* in the side panel. Paste the Foresight Tuner output, the Two Wheel Tuner output, or all of `pedro/Constants.java`, and press **Apply**. Or type the numbers in. They are saved in that browser only; **Reset to defaults** goes back to the file.
 - **For everyone:** edit `DRIVE_DEFAULTS` in `index.html` and commit.
@@ -112,7 +116,10 @@ Driving speed, braking and turning come from the `DRIVE_DEFAULTS` block at the t
 | `accelerationTime` | Seconds from standstill to full speed (stopwatch or video) |
 | `forwardTicksToInches`, `strafeTicksToInches` | Two Wheel Tuner (`TwoWheelConfig`) |
 
-**Odometry:** the robot uses two goBILDA 4-Bar pods plus the Control Hub IMU, with no Pinpoint. With *Odometry drift* set to **From ticks-to-inches**, the simulated pods count like stock 4-Bar pods (0.001979 in/tick) and are converted with your ticks-to-inches values. A wrong value then shows up as odometry drift, which affects odometry aim and the shot lead. For example, the current `strafeTicksToInches` (0.00357) makes strafing read 1.8× too far. Heading comes from the IMU and barely drifts.
+**Odometry:** the robot uses two goBILDA 4-Bar pods plus the Control Hub IMU, with no Pinpoint. The pods were tuned on 2026-11-19 (Two Wheel Tuner plus the Odometry Tile Test): forward 0.0019494 and strafe 0.0018892 in/tick.
+- **Calibrated pods (the default *Odometry drift* setting):** the simulated pods count like the real ones measured in the tile test, and are read through your ticks-to-inches values. With the tuned values, odometry only drifts by the IMU. Paste a wrong value, such as the old 0.00357 strafe, to see it throw off odometry aim and the shot lead.
+- **Pod offsets:** not simulated. The tile test showed turns in place were right.
+- **Old saved values:** browsers that saved the old 2026-11-07 ticks-to-inches switch to the new values automatically; other saved values stay.
 
 ## Settings
 

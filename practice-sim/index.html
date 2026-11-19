@@ -98,7 +98,7 @@
       <option value="auto1">After a 1-tip auto (parked in LOADING ZONE)</option>
       <option value="setup">Match setup (4 pre-loads, HIVE as staged)</option></select></label>
     <label class="set">Odometry drift <select id="optDrift">
-      <option value="off">Off</option><option value="low">Low</option><option value="high">High</option><option value="config" id="optDriftConfig">From ticks-to-inches</option></select></label>
+      <option value="config" id="optDriftConfig">Calibrated pods (from ticks-to-inches)</option><option value="off">Off</option><option value="low">Low</option><option value="high">High</option></select></label>
     <label class="set">Other robots <select id="optNpcs">
       <option value="none">None (solo practice)</option>
       <option value="easy">Partner + 2 opponents, slow</option>
@@ -122,7 +122,8 @@
       To measure braking: drive full speed (or 80% in the TeleOp), let go, measure the stopping distance <i>d</i> and use <i>v</i>² ÷ (2 × <i>d</i>).
       Coast deceleration is the lower limit; if both coast values are set, strafing brakes in the same ratio.<br>
       <b>Turn rate:</b> spin in place at full right stick for 5 s and count turns (turns × 360 ÷ 5 × 1.25, because the TeleOp caps at 80%).<br>
-      <b>Odometry:</b> with Odometry drift set to "From ticks-to-inches", the simulated pods read stock goBILDA 4-Bar ticks (0.001979 in/tick) through your ticks-to-inches values, so a wrong value shows up as drift.
+      <b>Odometry:</b> with Odometry drift on "Calibrated pods", the simulated pods count like the real ones did in the Odometry Tile Test (2026-11-19) and are read through the ticks-to-inches above, so with the tuned values odometry only drifts by the IMU. Paste a wrong value to see what it does to aim and shot lead.<br>
+      <b>Measure the rest:</b> run <b>BIOBUZZ Drive Feel Test</b> on the robot and paste its last telemetry lines here.
     </div>
   </details>
 
@@ -229,12 +230,19 @@ const DRIVE_DEFAULTS = {
   brakeDeceleration: 180,             // in/s² when the sticks are released (BRAKE). Guess: measure it
   accelerationTime: 0.35,             // s from standstill to full speed. Guess
   maxTurnRate: 300,                   // deg/s at full turn power. Guess
-  forwardTicksToInches: 0.0020144555737033826, // TwoWheelConfig, Two Wheel Tuner 2026-11-07
-  strafeTicksToInches: 0.003571875173051589,   // TwoWheelConfig, Two Wheel Tuner 2026-11-07
+  forwardTicksToInches: 0.0019494, // TwoWheelConfig, Two Wheel Tuner + Odometry Tile Test 2026-11-19
+  strafeTicksToInches: 0.0018892,  // TwoWheelConfig, Two Wheel Tuner + Odometry Tile Test 2026-11-19
 };
-const POD_INCHES_PER_TICK = Math.PI * 32 / 25.4 / 2000; // goBILDA 4-Bar pod: 32 mm wheel, 2000 ticks/rev
+// What the real pods measure per tick, from the Odometry Tile Test on 2026-11-19 (robot driven a
+// measured 48 in). The simulated pods count like this; a different ticks-to-inches above shows up as drift.
+const POD_TRUE_INCHES_PER_TICK = { forward: 0.0019494, strafe: 0.0018892 };
 const DRIVE = { ...DRIVE_DEFAULTS };
-try { Object.assign(DRIVE, JSON.parse(localStorage.getItem('biobuzz-sim-drive') || '{}')); } catch (e) {}
+try {
+  const saved = JSON.parse(localStorage.getItem('biobuzz-sim-drive') || '{}');
+  // Saved before the 2026-11-19 pod calibration: drop the old, wrong ticks-to-inches, keep the rest
+  if (saved.strafeTicksToInches === 0.003571875173051589) { delete saved.strafeTicksToInches; delete saved.forwardTicksToInches; }
+  Object.assign(DRIVE, saved);
+} catch (e) {}
 
 const DRIFT = {
   off:  { fwd: 1.00, str: 1.00, hdg: 0.000 },
@@ -245,7 +253,7 @@ const DRIFT = {
 // ============================================================================
 // Settings (remembered in this browser)
 // ============================================================================
-const settings = { view: 'driver', length: '120', aim: 'LIMELIGHT', start: 'auto1', drift: 'low', belly: '1', npcs: 'none', helpers: '1' };
+const settings = { view: 'driver', length: '120', aim: 'LIMELIGHT', start: 'auto1', drift: 'config', belly: '1', npcs: 'none', helpers: '1' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('biobuzz-sim-settings') || '{}')); } catch (e) {}
 const optIds = { view: 'optView', length: 'optLength', aim: 'optAim', start: 'optStart', drift: 'optDrift', belly: 'optBelly', npcs: 'optNpcs', helpers: 'optHelpers' };
 for (const [k, id] of Object.entries(optIds)) {
@@ -886,7 +894,7 @@ function brakeDecels() {
   return { forward, strafe: Math.max(forward * ratio, ns || 0) };
 }
 function configDrift() {
-  return { fwd: DRIVE.forwardTicksToInches / POD_INCHES_PER_TICK, str: DRIVE.strafeTicksToInches / POD_INCHES_PER_TICK, hdg: 0.002 };
+  return { fwd: DRIVE.forwardTicksToInches / POD_TRUE_INCHES_PER_TICK.forward, str: DRIVE.strafeTicksToInches / POD_TRUE_INCHES_PER_TICK.strafe, hdg: 0.002 };
 }
 
 // With the belly quirk the transfer can't reach the last ball, so it stays in the robot.
@@ -1662,7 +1670,7 @@ function refreshCal() {
     if (document.activeElement !== el) el.value = DRIVE[k] === null ? '' : DRIVE[k];
   }
   const d = configDrift();
-  document.getElementById('optDriftConfig').textContent = `From ticks-to-inches (fwd ×${d.fwd.toFixed(2)}, strafe ×${d.str.toFixed(2)})`;
+  document.getElementById('optDriftConfig').textContent = `Calibrated pods (fwd ×${d.fwd.toFixed(2)}, strafe ×${d.str.toFixed(2)})`;
 }
 for (const [k, , , , optional] of CAL_FIELDS) {
   document.getElementById('cal-' + k).addEventListener('change', e => {
