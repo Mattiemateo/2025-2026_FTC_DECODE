@@ -235,6 +235,30 @@ public class BIOBUZZTest {
         assertEquals(up, level[2], 1e-9);
     }
 
+    @Test
+    public void tileTestDrivesTowardItsTarget() {
+        // Target ahead: drive forward, no strafe, no turn.
+        double[] c = OdometryTileTest.driveCommand(0, 0, 0, 48, 0, 0);
+        assertTrue(c[0] > 0);
+        assertEquals(0, c[1], 1e-9);
+        assertEquals(0, c[2], 1e-9);
+        assertTrue(Math.hypot(c[0], c[1]) <= OdometryTileTest.MAX_POWER + 1e-9);
+        // Target to the left (+y) while facing +x: strafe left (negative = left for drivePowers).
+        c = OdometryTileTest.driveCommand(0, 0, 0, 0, 48, 0);
+        assertTrue(c[1] < 0);
+        assertEquals(0, c[0], 1e-9);
+        // Facing +y (90 deg), target at +y: that is straight ahead.
+        c = OdometryTileTest.driveCommand(0, 0, 90, 0, 48, 90);
+        assertTrue(c[0] > 0);
+        assertEquals(0, c[1], 1e-9);
+        // Need to turn counter-clockwise: turn power negative (drivePowers turns clockwise for +).
+        c = OdometryTileTest.driveCommand(0, 0, 0, 0, 0, 90);
+        assertTrue(c[2] < 0);
+        // On target: no power.
+        c = OdometryTileTest.driveCommand(48, 0, 0, 48, 0, 0);
+        assertEquals(0, Math.hypot(c[0], Math.hypot(c[1], c[2])), 1e-9);
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void turretRejectsInvalidTargets() {
         TurretController.clampAngle(Double.NaN);

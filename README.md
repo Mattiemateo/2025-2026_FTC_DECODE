@@ -86,6 +86,7 @@ The desktop driver station in `~/code/ftcdriverstation` maps Space to a forward 
 ## Other OpModes
 
 - **BIOBUZZ Shot Calibration:** builds `ShotTable.ROWS` (see Shooting on the move).
+- **BIOBUZZ Odometry Tile Test:** drives a 2-tile square, two diagonals and a full turn in place on a 3x3 tile area using only odometry, one step per Cross press (Circle stops). Start centred on a corner tile with two tiles ahead and two to the left. If a leg ends past or short of the tile centre, scale that pod's ticks-to-inches by (real distance / 48); drifting off the start tile while turning means the pod offsets are off.
 - **BIOBUZZ Pod Check:** shows raw ticks of both odometry pods. A goBILDA 4-Bar pod reads about 12,100 ticks per tile (24 in.). Use it before re-tuning.
 - **BIOBUZZ Limelight Web Proxy:** while it runs, a laptop on the robot Wi-Fi reaches the Limelight web UI at http://192.168.43.1:5801 (the Limelight itself is 172.29.0.1 on the Control Hub's USB network; `eth0:172.29.0.25` on the Driver Station is the hub's own end).
 
