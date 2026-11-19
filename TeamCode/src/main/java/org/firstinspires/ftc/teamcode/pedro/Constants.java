@@ -34,10 +34,13 @@ public class Constants {
         // (forward 0.001940 / 0.001959, strafe 0.0056896 / 0.0056899). The offsets did not
         // (x 0.85 / 4.01, y -2.39 / -2.83), so they are averaged; measuring them with a ruler
         // (pod contact point to the robot's centre of rotation) would be more accurate.
+        // Odometry Tile Test 2026-11-19: forward legs and turns in place were right, but strafe
+        // legs travelled half the distance (strafe counted double), so strafeTicksToInches and
+        // yPodOffset (derived from the strafe pod) are halved from the tuner's 0.0056898 / -2.609.
         c.xPodOffset.set(2.428);
-        c.yPodOffset.set(-2.609);
+        c.yPodOffset.set(-1.305);
         c.forwardTicksToInches.set(0.0019494);
-        c.strafeTicksToInches.set(0.0056898);
+        c.strafeTicksToInches.set(0.0028449);
         c.xPodDirection.set(Encoder.REVERSE);
         c.yPodDirection.set(Encoder.FORWARD);
         c.imu.set(new RevHubIMU(new RevHubOrientationOnRobot(
