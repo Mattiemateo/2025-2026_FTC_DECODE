@@ -30,13 +30,14 @@ public class Constants {
         c.xPodName.set("rightBackDrive");
         c.yPodName.set("rightFrontDrive");
         c.imuName.set("imu");
-        // Two Wheel Tuner output, 2026-11-07 (second run, forward pod fixed and moved to rightBackDrive).
-        // NOTE: strafeTicksToInches 0.00357 is ~1.8x the first run (0.00203) and the ~0.00198 expected
-        // for a goBILDA 4-Bar pod. Check one tile sideways with "BIOBUZZ Pod Check" / Robot Pose.
-        c.xPodOffset.set(-2.9544544296830106);
-        c.yPodOffset.set(-0.31120939571087114);
-        c.forwardTicksToInches.set(0.0020144555737033826);
-        c.strafeTicksToInches.set(0.003571875173051589);
+        // Two Wheel Tuner, 2026-11-19: average of two runs. Ticks-to-inches agreed between runs
+        // (forward 0.001940 / 0.001959, strafe 0.0056896 / 0.0056899). The offsets did not
+        // (x 0.85 / 4.01, y -2.39 / -2.83), so they are averaged; measuring them with a ruler
+        // (pod contact point to the robot's centre of rotation) would be more accurate.
+        c.xPodOffset.set(2.428);
+        c.yPodOffset.set(-2.609);
+        c.forwardTicksToInches.set(0.0019494);
+        c.strafeTicksToInches.set(0.0056898);
         c.xPodDirection.set(Encoder.REVERSE);
         c.yPodDirection.set(Encoder.FORWARD);
         c.imu.set(new RevHubIMU(new RevHubOrientationOnRobot(
