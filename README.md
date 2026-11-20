@@ -45,9 +45,24 @@ The alliance sets the odometry start spot and which HIVE auto-aim targets. Witho
 | Triangle | Toggle auto-aim on/off (starts off; bumpers are ignored while it is on). While on, the flywheel pre-spins to the RPM for the current distance. |
 | D-pad up / down | The FAR / AUDIENCE cell of our HIVE is tipped up (auto-aim target) |
 | Options | Robot is back at its start spot: re-zero odometry there |
+| Share (tap) | Odometry off/on, e.g. a pod got knocked loose: stops line hold, goal memory, shot lead and odometry aim (auto-aim then uses the camera only) |
+| Share (hold 0.6 s) | Driving assists off/on (stick shaping, heading hold, line hold) |
+| L3 (left stick press) | Field-relative driving on/off: stick forward = away from the drivers |
+| R3 (right stick press) | "Away from the drivers" = the robot's current heading (it starts as the heading at Start) |
 | (rumble) | A short buzz (`READY_RUMBLE_MS`, 200 ms) when the shot turns READY with auto-aim ON and Square not held: press Square now. It won't buzz again until READY has been off for `READY_REARM_SEC` (0.5 s), so a flickering RPM check doesn't spam it. |
 
 Stopping the OpMode on the Driver Station stops all motors. There is no slow-drive mode or stop-all button.
+
+### Driving assists (`DriveAssist.java`)
+
+Against sideways drift when driving "straight", all on by default:
+
+- **Stick shaping:** dead zone (`DEADZONE` 0.05); within ±`SNAP_DEG` (8°) of pure forward/back the sideways part is removed, and within 8° of pure left/right the forward part; response curve (`CURVE` 0.5) for finer slow control.
+- **Heading hold (gyro):** with the turn stick released, the heading locks once the robot stops turning, and unwanted rotation is corrected (`HEADING_KP`, `HEADING_KD`).
+- **Line hold (odometry):** while driving in a straight zone, the robot stays on the line it started on (`LINE_KP` per inch off the line, `LINE_KV` per in/s sideways).
+- **Field-relative (optional, L3).**
+
+Telemetry `Drive` shows the state (snap, heading lock, inches off the line) and `Sticks` the raw stick values. Tune in this order: shaping, heading hold, line hold.
 
 ### Shooting on the move
 

@@ -614,6 +614,16 @@ public class TurretController {
             historyOdoY[index], historyOdoHeading[index], historyOdoValid[index] ? 1 : 0};
     }
 
+    /** Gyro heading, degrees counter-clockwise (for the driving assists). */
+    public double imuHeadingDeg() {
+        return getRobotHeading();
+    }
+
+    /** Gyro turn rate, degrees per second counter-clockwise (for the driving assists). */
+    public double imuYawRateDegPerSec() {
+        return getYawRateDegPerSec();
+    }
+
     private double getYawRateDegPerSec() {
         try {
             return imu.getRobotAngularVelocity(AngleUnit.DEGREES).zRotationRate;

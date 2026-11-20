@@ -17,6 +17,9 @@ import com.qualcomm.robotcore.util.ElapsedTime;
  * D-pad up/down: FAR / AUDIENCE cell is tipped up (odometry aim only)
  * Options: robot is back at its start spot, re-zero odometry there
  * Rumble: a short buzz when the shot turns READY (auto-aim ON, Square not held)
+ * Share (tap): odometry off/on (line hold, goal memory, shot lead) - e.g. a pod got knocked loose
+ * Share (hold 0.6 s): driving assists off/on (stick shaping, heading hold, line hold)
+ * L3: field-relative driving on/off | R3: "away from the drivers" = robot's current heading
  */
 @TeleOp(name = "BIOBUZZ", group = "BIOBUZZ")
 public class BIOBUZZ extends LinearOpMode {
@@ -30,7 +33,10 @@ public class BIOBUZZ extends LinearOpMode {
     // READY must have been off this long before it buzzes again, so a flickering RPM check doesn't spam.
     public static double READY_REARM_SEC = 0.5;
 
+    public static double SHARE_HOLD_SEC = 0.6;
+
     private final BiobuzzRobot robot = new BiobuzzRobot();
+    private final DriveAssist assist = new DriveAssist();
     private final ElapsedTime sinceReady = new ElapsedTime();
 
     @Override
@@ -55,16 +61,49 @@ public class BIOBUZZ extends LinearOpMode {
         double spinRpm = FlywheelController.DEFAULT_RPM;
         FieldAim.Cell cell = FieldAim.Cell.FAR;
         resetPoseToStart();
+        assist.setFieldReference(robot.turret.imuHeadingDeg()); // robot starts facing away from the drivers
+        boolean lastL3 = false, lastR3 = false, shareConsumed = false;
+        ElapsedTime shareHeld = new ElapsedTime();
+        boolean lastShare = false;
 
         try {
             while (opModeIsActive()) {
-                robot.drive(-gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x, DRIVE_SCALE);
+                // Share: tap = odometry off/on, hold = driving assists off/on.
+                if (gamepad1.share && !lastShare) {
+                    shareHeld.reset();
+                    shareConsumed = false;
+                }
+                if (gamepad1.share && !shareConsumed && shareHeld.seconds() >= SHARE_HOLD_SEC) {
+                    assist.assistsOn = !assist.assistsOn;
+                    shareConsumed = true;
+                }
+                if (!gamepad1.share && lastShare && !shareConsumed) {
+                    robot.odometryEnabled = !robot.odometryEnabled;
+                    robot.turret.forgetGoal();
+                }
+                lastShare = gamepad1.share;
+                if (gamepad1.left_stick_button && !lastL3) assist.fieldRelative = !assist.fieldRelative;
+                if (gamepad1.right_stick_button && !lastR3) assist.setFieldReference(robot.turret.imuHeadingDeg());
+                lastL3 = gamepad1.left_stick_button;
+                lastR3 = gamepad1.right_stick_button;
+
+                Pose pose = robot.updateOdometry();
+                double[] cmd = assist.update(-gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x,
+                        robot.turret.imuHeadingDeg(), robot.turret.imuYawRateDegPerSec(),
+                        pose != null, pose == null ? 0 : pose.x(), pose == null ? 0 : pose.y(),
+                        pose == null ? 0 : Math.toDegrees(pose.heading()),
+                        robot.velocityForward(), robot.velocityLeft());
+                robot.drive(cmd[0], cmd[1], cmd[2], DRIVE_SCALE);
+                telemetry.addData("Drive", "%s | odometry %s", assist.status(),
+                        robot.odometryEnabled ? "ON" : "OFF (Share)");
+                telemetry.addData("Sticks (fwd / right / turn)", "%.2f / %.2f / %.2f",
+                        -gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x);
                 robot.intake.setPower(BiobuzzRobot.INTAKE_POWER * (gamepad1.right_trigger - gamepad1.left_trigger));
 
                 if (gamepad1.dpad_up) cell = FieldAim.Cell.FAR;
                 if (gamepad1.dpad_down) cell = FieldAim.Cell.AUDIENCE;
                 if (gamepad1.options) resetPoseToStart();
-                updateFieldAim(robot.updateOdometry(), cell);
+                updateFieldAim(pose, cell);
 
                 if (gamepad1.triangle && !lastTriangle) autoAim = !autoAim;
                 lastTriangle = gamepad1.triangle;
@@ -151,7 +190,7 @@ public class BIOBUZZ extends LinearOpMode {
     private void updateFieldAim(Pose pose, FieldAim.Cell cell) {
         if (pose == null) {
             robot.turret.clearFieldAim();
-            telemetry.addData("Odometry OFF", robot.odometryError);
+            telemetry.addData("Odometry OFF", robot.odometryEnabled ? robot.odometryError : "turned off with Share");
             return;
         }
         double headingDeg = Math.toDegrees(pose.heading());

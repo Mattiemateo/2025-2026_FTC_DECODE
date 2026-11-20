@@ -284,6 +284,69 @@ public class BIOBUZZTest {
         }
     }
 
+    @Test
+    public void stickShapingSnapsNearlyStraightPushesToStraight() {
+        // 5 deg off straight forward: sideways part removed, full speed kept.
+        double[] s = DriveAssist.shapeTranslation(Math.cos(Math.toRadians(5)), Math.sin(Math.toRadians(5)));
+        assertEquals(1.0, s[0], 1e-9);
+        assertEquals(0, s[1], 1e-9);
+        assertEquals(DriveAssist.Snap.FORWARD_BACK, DriveAssist.snapOf(s[2]));
+        // 5 deg off straight right: forward part removed.
+        s = DriveAssist.shapeTranslation(Math.sin(Math.toRadians(5)), Math.cos(Math.toRadians(5)));
+        assertEquals(0, s[0], 1e-9);
+        assertEquals(1.0, s[1], 1e-9);
+        assertEquals(DriveAssist.Snap.LEFT_RIGHT, DriveAssist.snapOf(s[2]));
+        // A real diagonal stays a diagonal.
+        s = DriveAssist.shapeTranslation(0.7, 0.7);
+        assertEquals(s[0], s[1], 1e-9);
+        assertEquals(DriveAssist.Snap.NONE, DriveAssist.snapOf(s[2]));
+        // Dead zone and finer control near the centre.
+        assertEquals(0, DriveAssist.shapeTranslation(0.03, 0.01)[0], 1e-9);
+        assertTrue(DriveAssist.shapeAxis(0.3) < 0.3);
+        assertEquals(1.0, DriveAssist.shapeAxis(1.0), 1e-9);
+    }
+
+    @Test
+    public void fieldRelativeTurnsTheStickIntoTheRobotFrame() {
+        // Robot turned 90 deg left (CCW) from the drivers' forward: stick forward = robot's right.
+        double[] r = DriveAssist.driverToRobot(1, 0, 90);
+        assertEquals(0, r[0], 1e-9);
+        assertEquals(1, r[1], 1e-9);
+        // Robot facing the drivers (180): stick forward = robot backward.
+        r = DriveAssist.driverToRobot(1, 0, 180);
+        assertEquals(-1, r[0], 1e-9);
+        assertEquals(0, r[1], 1e-9);
+    }
+
+    @Test
+    public void headingHoldAndLineHoldPushBack() {
+        // Robot rotated 10 deg counter-clockwise past its target: turn clockwise (positive).
+        assertTrue(DriveAssist.headingHoldTurn(0, 10, 0) > 0);
+        assertTrue(DriveAssist.headingHoldTurn(0, -10, 0) < 0);
+        // Driving along +x, drifted 2 in to the left (+y): correction points right (-y).
+        double[] c = DriveAssist.lineCorrection(10, 2, 0, 0, 1, 0);
+        assertEquals(0, c[0], 1e-9);
+        assertTrue(c[1] < 0);
+        assertEquals(2, c[2], 1e-9);
+        // On the line but sliding left: also push right.
+        assertTrue(DriveAssist.lineCorrection(10, 0, 30, 5, 1, 0)[1] < 0);
+    }
+
+    @Test
+    public void driveAssistHoldsTheLineWhileDrivingStraight() {
+        DriveAssist assist = new DriveAssist();
+        // Facing +x, stick pushed forward with a little right, robot drifted 3 in left.
+        assist.update(1.0, 0, 0, 0, 0, true, 0, 0, 0, 0, 0); // line starts at the origin
+        double[] cmd = assist.update(1.0, 0.05, 0, 0, 0, true, 20, 3, 0, 40, 0);
+        assertTrue(cmd[0] > 0); // still driving forward
+        assertTrue(cmd[1] > 0); // strafing right, back toward the line
+        // Assists off: the stick goes straight through.
+        assist.assistsOn = false;
+        cmd = assist.update(0.5, 0.05, 0, 0, 0, true, 20, 3, 0, 40, 0);
+        assertEquals(0.5, cmd[0], 1e-9);
+        assertEquals(0.05, cmd[1], 1e-9);
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void turretRejectsInvalidTargets() {
         TurretController.clampAngle(Double.NaN);

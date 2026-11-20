@@ -23,6 +23,9 @@ public class BiobuzzRobot {
     public final TurretController turret = new TurretController();
     public Localizer localizer;
     public String odometryError;
+    // Share (short press) turns this off, e.g. when a pod is knocked loose: the localizer keeps
+    // running, but nothing uses it (no line hold, goal memory, shot lead or odometry aim).
+    public boolean odometryEnabled = true;
 
     private Pose lastPose;
     private long lastPoseNanos;
@@ -128,9 +131,24 @@ public class BiobuzzRobot {
             lastPose = pose;
             lastPoseNanos = now;
         }
+        if (!odometryEnabled) {
+            turret.setRobotVelocity(0, 0);
+            turret.clearOdometryPose();
+            return null;
+        }
         turret.setRobotVelocity(vForward, vLeft);
         turret.setOdometryPose(pose.x(), pose.y(), Math.toDegrees(pose.heading()));
         return pose;
+    }
+
+    /** Robot-frame forward speed from odometry (in/s). */
+    public double velocityForward() {
+        return vForward;
+    }
+
+    /** Robot-frame left speed from odometry (in/s). */
+    public double velocityLeft() {
+        return vLeft;
     }
 
     /** Field-frame displacement over dt turned into {forward, left} speed in the robot frame. */
