@@ -35,6 +35,17 @@ public class TurretController {
     // Travel limits, 0 = straight ahead, clockwise positive. The cables allow 180 deg CCW and
     // 120 deg CW; these keep a 10 deg margin. Right side of the robot = +90, left side = -90.
     public static double MIN_ANGLE = -170.0, MAX_ANGLE = 110.0;
+    // Near a limit the turret slows down, so it can't overshoot into the cables.
+    public static double LIMIT_SLOW_ZONE_DEG = 25.0;
+    public static double LIMIT_ZONE_POWER = 0.3; // auto-aim / hold power cap in the slow zone
+    public static double LIMIT_ZONE_SPEED_DEG_PER_SEC = 30.0; // bumper speed in the slow zone
+    // Past a limit by more than this: every command is overridden and the turret is driven back.
+    public static double OVERTRAVEL_DEG = 3.0;
+
+    // Encoder count of "turret centred". The hub keeps counting as long as the robot is powered
+    // (also when the turret is turned by hand), so this zero is captured once after power-up and
+    // kept for every later OpMode. Hold Options during INIT to re-zero (turret centred by hand).
+    private static Integer zeroTicks = null;
     public static double TURRET_MAX_POWER = 0.3;
     // Power used while a turret button is held; on release the turret holds where it stopped.
     public static double MANUAL_SPEED_DEG_PER_SEC = 80.0;
@@ -149,7 +160,10 @@ public class TurretController {
             telemetry.addData("IMU", "Initialized successfully");
 
             turretMotor = hardwareMap.get(DcMotorEx.class, "turret"); // port 0 Expansion hub
-            turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            turretMotor.setPower(0);
+            turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            if (zeroTicks == null) zeroTicks = turretMotor.getCurrentPosition(); // first OpMode since power-up
+            manualTargetAngle = clampAngle(getCurrentAngle()); // hold where it is, don't swing at Start
             turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             turretMotor.setPositionPIDFCoefficients(POSITION_P);
             if (USE_CUSTOM_VELOCITY_PIDF) {
@@ -203,7 +217,21 @@ public class TurretController {
         } else {
             updateManualControl();
         }
+        enforceLimits();
         updateTelemetry();
+    }
+
+    /** Last line of defence: past a limit, override every command and drive back inside. */
+    private void enforceLimits() {
+        double angle = getCurrentAngle();
+        if (angle > MAX_ANGLE + OVERTRAVEL_DEG || angle < MIN_ANGLE - OVERTRAVEL_DEG) {
+            double inside = clampAngle(angle);
+            manualTargetAngle = inside;
+            turretMotor.setTargetPosition(ticksFor(inside));
+            setMode(DcMotor.RunMode.RUN_TO_POSITION);
+            turretMotor.setPower(LIMIT_ZONE_POWER);
+            telemetry.addData("TURRET PAST LIMIT", "%.0f° - driving back to %.0f°", angle, inside);
+        }
     }
 
     private void updateAutoAim() {
@@ -319,11 +347,9 @@ public class TurretController {
 
             if (shouldMove) {
                 // Move to target position with reduced power
-                int targetPositionTicks = (int) (targetAngle *
-                    TICKS_PER_DEGREE);
-                turretMotor.setTargetPosition(targetPositionTicks);
+                turretMotor.setTargetPosition(ticksFor(clampAngle(targetAngle)));
                 setMode(DcMotor.RunMode.RUN_TO_POSITION);
-                turretMotor.setPower(SEARCH_POWER); // Use slower search power
+                turretMotor.setPower(limitZonePower(targetAngle, SEARCH_POWER));
             }
         }
     }
@@ -419,10 +445,10 @@ public class TurretController {
         leadOffsetDeg = wrap180(aimTargetAngle - goalAngle);
         // Keep the gyro bearing in step, so the camera picks up smoothly when the tags come back.
         targetBearingField = wrap180(goalAngle - turretSign() * imuHeading);
-        int targetPositionTicks = (int) (commandTurret(aimTargetAngle) * TICKS_PER_DEGREE);
-        turretMotor.setTargetPosition(targetPositionTicks);
+        double commanded = commandTurret(aimTargetAngle);
+        turretMotor.setTargetPosition(ticksFor(commanded));
         setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        turretMotor.setPower(AIM_MAX_POWER);
+        turretMotor.setPower(limitZonePower(commanded, AIM_MAX_POWER));
     }
 
     /** Turret angle that points from the robot at (goalX, goalY). */
@@ -433,10 +459,10 @@ public class TurretController {
     }
 
     private void driveToAngle(double angle, double maxPower) {
-        int targetPositionTicks = (int) (commandTurret(angle) * TICKS_PER_DEGREE);
-        turretMotor.setTargetPosition(targetPositionTicks);
+        double commanded = commandTurret(angle);
+        turretMotor.setTargetPosition(ticksFor(commanded));
         setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        turretMotor.setPower(maxPower);
+        turretMotor.setPower(limitZonePower(commanded, maxPower));
     }
 
     /** Gyro-stabilised aim: counter-rotate the turret against the robot's heading (and turn rate). */
@@ -454,10 +480,28 @@ public class TurretController {
             shotDistanceIn = 0;
         }
         leadOffsetDeg = wrap180(aimTargetAngle - goalAngle);
-        int targetPositionTicks = (int) (commandTurret(aimTargetAngle) * TICKS_PER_DEGREE);
-        turretMotor.setTargetPosition(targetPositionTicks);
+        double commanded = commandTurret(aimTargetAngle);
+        turretMotor.setTargetPosition(ticksFor(commanded));
         setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        turretMotor.setPower(AIM_MAX_POWER);
+        turretMotor.setPower(limitZonePower(commanded, AIM_MAX_POWER));
+    }
+
+    /** Encoder target for a turret angle (relative to the saved zero). */
+    private int ticksFor(double angle) {
+        return zeroTicks + (int) Math.round(angle * TICKS_PER_DEGREE);
+    }
+
+    /** Power cap while the target is close to a travel limit, so the turret can't overshoot it. */
+    static double limitZonePower(double targetAngle, double power) {
+        boolean nearLimit = targetAngle > MAX_ANGLE - LIMIT_SLOW_ZONE_DEG
+            || targetAngle < MIN_ANGLE + LIMIT_SLOW_ZONE_DEG;
+        return nearLimit ? Math.min(power, LIMIT_ZONE_POWER) : power;
+    }
+
+    /** Set "turret centred" to where the turret is now (it must be centred by hand). */
+    public void rezeroHere() {
+        zeroTicks = turretMotor.getCurrentPosition();
+        manualTargetAngle = 0;
     }
 
     /**
@@ -757,10 +801,14 @@ public class TurretController {
         }
     }
 
-    /** Jog speed in deg/s, or 0 when not jogging or when the travel limit is reached. */
+    /** Jog speed in deg/s: slower close to a limit, 0 when not jogging or at the limit. */
     static double manualVelocity(double direction, double currentAngle) {
-        if (direction > 0 && currentAngle < MAX_ANGLE) return MANUAL_SPEED_DEG_PER_SEC;
-        if (direction < 0 && currentAngle > MIN_ANGLE) return -MANUAL_SPEED_DEG_PER_SEC;
+        if (direction > 0 && currentAngle < MAX_ANGLE) {
+            return currentAngle > MAX_ANGLE - LIMIT_SLOW_ZONE_DEG ? LIMIT_ZONE_SPEED_DEG_PER_SEC : MANUAL_SPEED_DEG_PER_SEC;
+        }
+        if (direction < 0 && currentAngle > MIN_ANGLE) {
+            return currentAngle < MIN_ANGLE + LIMIT_SLOW_ZONE_DEG ? -LIMIT_ZONE_SPEED_DEG_PER_SEC : -MANUAL_SPEED_DEG_PER_SEC;
+        }
         return 0;
     }
 
@@ -770,10 +818,10 @@ public class TurretController {
     }
 
     private void setTargetAngleInternal(double angle) {
-        int targetPositionTicks = (int) (clampAngle(angle) * TICKS_PER_DEGREE);
-        turretMotor.setTargetPosition(targetPositionTicks);
+        double target = clampAngle(angle);
+        turretMotor.setTargetPosition(ticksFor(target));
         setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        turretMotor.setPower(TURRET_MAX_POWER);
+        turretMotor.setPower(limitZonePower(target, TURRET_MAX_POWER));
     }
 
     public void enableAutoAim(boolean enable) {
@@ -813,7 +861,7 @@ public class TurretController {
     }
 
     public double getCurrentAngle() {
-        return turretMotor.getCurrentPosition() / TICKS_PER_DEGREE;
+        return (turretMotor.getCurrentPosition() - zeroTicks) / TICKS_PER_DEGREE;
     }
 
     public void setPipeline(int pipeline) {
@@ -856,9 +904,8 @@ public class TurretController {
     }
 
     public void reset() {
-        turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        rezeroHere();
         imu.resetYaw(); // Reset the IMU's yaw when resetting the turret
-        manualTargetAngle = 0;
     }
 
     private void updateTelemetry() {

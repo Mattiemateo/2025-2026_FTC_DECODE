@@ -6,8 +6,10 @@ TeleOp **BIOBUZZ**, one PlayStation controller (gamepad 1). Keep this in sync wi
 
 1. **Battery** charged (telemetry `Battery` should be above ~12.5 V at the start).
 2. Put the robot on its start spot, **facing away from the drivers** (toward the HIVE).
-3. **Centre the turret** by hand, pointing straight ahead. Its zero is wherever it is at INIT.
-4. Press **INIT**, then pick the alliance: **Circle = RED, Cross = BLUE**. Check the `Alliance` line.
+3. Press **INIT** and check the `Turret` line: it should say about **0° from centre** with the turret pointing straight ahead.
+   - First INIT after switching the robot on: **centre the turret by hand first**. That position becomes its zero and is kept for every later OpMode until the robot is switched off.
+   - Turret centred but the line says something else (or warns)? **Hold Options** during INIT to re-zero it there.
+4. Pick the alliance: **Circle = RED, Cross = BLUE**. Check the `Alliance` line.
 5. Press **Start**.
 
 ## Controls
@@ -76,6 +78,7 @@ The `Shot` line says READY or what it is waiting for:
 | Field-relative "forward" is off | Point the robot away from the drivers, press **R3**. Or turn it off with **L3**. |
 | Ball stuck in the transfer | Hold **Circle** briefly (transfer backward). |
 | Turret aims at the wrong HIVE | Wrong alliance. Restart the OpMode and pick it in INIT. |
-| Turret not centred at INIT | Its "straight ahead" is wrong for the whole match: stop, centre it, INIT again. |
+| Turret "straight ahead" is wrong / it turns too far back | Stop. Centre the turret by hand, INIT, **hold Options** to re-zero. |
+| `TURRET PAST LIMIT` on the screen | The turret went past its safe range and is driving itself back. If it keeps happening, re-zero (above). |
 
 The `Drive` line shows the assist state, e.g. `assists ON | ROBOT | snap FORWARD_BACK | heading locked 0° | line on (0.4 in off) | odometry ON`.

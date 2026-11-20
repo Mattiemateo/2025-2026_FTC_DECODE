@@ -81,6 +81,20 @@ public class BiobuzzRobot {
         return lowest;
     }
 
+    /**
+     * During INIT: show where the turret thinks it is, and re-zero it while Options is held (turret
+     * centred by hand). The zero is kept between OpModes while the robot stays powered.
+     */
+    public void turretInitCheck(Gamepad gamepad, Telemetry telemetry) {
+        if (gamepad.options) turret.rezeroHere();
+        double angle = turret.getCurrentAngle();
+        telemetry.addData("Turret", "%.0f° from centre%s", angle,
+                gamepad.options ? "  (re-zeroed here)" : "");
+        if (Math.abs(angle) > 5) {
+            telemetry.addLine("!! Turret not at centre: centre it by hand, or if it IS centred, hold Options to re-zero.");
+        }
+    }
+
     /** During INIT: Circle = RED, Cross = BLUE. */
     public static void selectAlliance(Gamepad gamepad) {
         if (gamepad.circle) TurretController.ALLIANCE = TurretController.Alliance.RED;

@@ -46,7 +46,7 @@ public class BIOBUZZ extends LinearOpMode {
         while (opModeInInit()) {
             BiobuzzRobot.selectAlliance(gamepad1);
             telemetry.addData("Alliance", "%s  (Circle = RED, Cross = BLUE)", TurretController.ALLIANCE);
-            telemetry.addLine("Turret home = current position. Center it before INIT.");
+            robot.turretInitCheck(gamepad1, telemetry);
             if (TurretController.AIM_SOURCE == TurretController.AimSource.ODOMETRY) {
                 telemetry.addLine("Start: back against our alliance wall, centred, facing the HIVE.");
             }
