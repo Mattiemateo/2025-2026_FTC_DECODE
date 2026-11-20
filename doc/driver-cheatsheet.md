@@ -53,7 +53,7 @@ The `Shot` line says READY or what it is waiting for:
 | `Shot` says | Meaning / what to do |
 |---|---|
 | `goal not seen` | The camera doesn't see your goal and there's no recent remembered goal. Turn toward the HIVE. |
-| `distance … outside shot table` | Too close or too far (table covers about 36–86 in). Move. |
+| `distance … outside shot table` | Too close or too far (table covers about 22–89 in, 55–225 cm). Move. |
 | `aiming (x°)` | The turret is still turning onto the goal. Wait a moment. |
 | `rpm x/y` | The flywheel isn't at speed yet. If it stays low, the battery is probably weak. |
 | `goal behind the turret's blind spot` | The turret can't point there (cable limits). Turn the robot. |
