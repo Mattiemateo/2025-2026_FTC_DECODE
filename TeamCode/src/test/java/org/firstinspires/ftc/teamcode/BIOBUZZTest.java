@@ -347,6 +347,39 @@ public class BIOBUZZTest {
         assertEquals(0.05, cmd[1], 1e-9);
     }
 
+    @Test
+    public void calibrationRowIsReadyToPasteIntoTheShotTable() {
+        assertEquals("{58.0, 2013, 0.45},", ShotCalibration.tableRow(58, 2012.6, 0.45));
+    }
+
+    @Test
+    public void turretSlowsDownNearItsLimits() {
+        double max = TurretController.MAX_ANGLE, min = TurretController.MIN_ANGLE;
+        double zone = TurretController.LIMIT_SLOW_ZONE_DEG;
+        // Auto-aim power is capped when the target is close to a limit, not in the middle.
+        assertEquals(0.8, TurretController.limitZonePower(0, 0.8), 1e-9);
+        assertEquals(TurretController.LIMIT_ZONE_POWER, TurretController.limitZonePower(max - 5, 0.8), 1e-9);
+        assertEquals(TurretController.LIMIT_ZONE_POWER, TurretController.limitZonePower(min + 5, 0.8), 1e-9);
+        // Bumpers: slower toward a nearby limit, full speed away from it, nothing past it.
+        assertEquals(TurretController.LIMIT_ZONE_SPEED_DEG_PER_SEC, TurretController.manualVelocity(1, max - zone / 2), 1e-9);
+        assertEquals(-TurretController.MANUAL_SPEED_DEG_PER_SEC, TurretController.manualVelocity(-1, max - zone / 2), 1e-9);
+        assertEquals(-TurretController.LIMIT_ZONE_SPEED_DEG_PER_SEC, TurretController.manualVelocity(-1, min + zone / 2), 1e-9);
+        assertEquals(0, TurretController.manualVelocity(1, max + 1), 1e-9);
+        assertEquals(0, TurretController.manualVelocity(-1, min - 1), 1e-9);
+    }
+
+    @Test
+    public void heldDpadRepeatsAfterAShortPause() {
+        ShotCalibration.Repeat r = new ShotCalibration.Repeat();
+        assertTrue(r.fires(true, 0.0)); // press = one step
+        assertFalse(r.fires(true, 0.2)); // still waiting for the repeat delay
+        assertTrue(r.fires(true, 0.45)); // repeating
+        assertFalse(r.fires(true, 0.5));
+        assertTrue(r.fires(true, 0.56));
+        assertFalse(r.fires(false, 0.6)); // released
+        assertTrue(r.fires(true, 0.7)); // new press
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void turretRejectsInvalidTargets() {
         TurretController.clampAngle(Double.NaN);
