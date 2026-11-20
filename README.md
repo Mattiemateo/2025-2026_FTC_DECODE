@@ -23,6 +23,8 @@ The pod names refer to the configured motor ports their encoder cables occupy. T
 
 ## One-gamepad TeleOp: BIOBUZZ
 
+**Drivers: see the [driver cheat sheet](doc/driver-cheatsheet.md)** for all controls, shooting and what to do when something goes wrong.
+
 ### During INIT
 
 | Control | Action |
