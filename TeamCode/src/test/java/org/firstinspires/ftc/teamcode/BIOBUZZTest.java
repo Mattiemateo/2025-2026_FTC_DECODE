@@ -259,6 +259,31 @@ public class BIOBUZZTest {
         assertEquals(0, Math.hypot(c[0], Math.hypot(c[1], c[2])), 1e-9);
     }
 
+    @Test
+    public void rememberedGoalIsWhereTheCameraSawIt() {
+        boolean original = TurretController.TURRET_POSITIVE_IS_CLOCKWISE;
+        try {
+            TurretController.TURRET_POSITIVE_IS_CLOCKWISE = true;
+            // Robot at the origin facing +x, turret turned 90 deg clockwise (right), goal straight
+            // ahead of the camera 50 in away: the goal is 50 in to the robot's right (-y).
+            double[] goal = TurretController.goalFromSighting(0, 0, 0, 90, 0, 50);
+            assertEquals(0, goal[0], 1e-9);
+            assertEquals(-50, goal[1], 1e-9);
+            // Target 10 deg right of the camera's centre: turret direction plus 10 deg clockwise.
+            goal = TurretController.goalFromSighting(0, 0, 0, 0, 10, 50);
+            assertEquals(50 * Math.cos(Math.toRadians(-10)), goal[0], 1e-9);
+            assertEquals(50 * Math.sin(Math.toRadians(-10)), goal[1], 1e-9);
+            // From any pose, aiming at the remembered point gives back the sighting's turret angle.
+            double[][] poses = {{10, 20, 30}, {-40, 5, 170}, {0, 0, -90}};
+            for (double[] p : poses) {
+                double[] g = TurretController.goalFromSighting(p[0], p[1], p[2], -60, 7, 55);
+                assertEquals(-53, TurretController.turretAngleToPoint(p[0], p[1], p[2], g[0], g[1]), 1e-9);
+            }
+        } finally {
+            TurretController.TURRET_POSITIVE_IS_CLOCKWISE = original;
+        }
+    }
+
     @Test(expected = IllegalArgumentException.class)
     public void turretRejectsInvalidTargets() {
         TurretController.clampAngle(Double.NaN);

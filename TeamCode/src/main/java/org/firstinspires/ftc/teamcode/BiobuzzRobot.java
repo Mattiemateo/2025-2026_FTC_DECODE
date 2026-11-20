@@ -99,6 +99,7 @@ public class BiobuzzRobot {
     public Pose updateOdometry() {
         if (localizer == null) {
             turret.setRobotVelocity(0, 0);
+            turret.clearOdometryPose();
             return null;
         }
         Pose pose;
@@ -109,6 +110,7 @@ public class BiobuzzRobot {
             localizer = null; // untuned or broken odometry: keep driving, just no lead / field aim
             odometryError = e.getMessage();
             turret.setRobotVelocity(0, 0);
+            turret.clearOdometryPose();
             return null;
         }
         long now = System.nanoTime();
@@ -127,6 +129,7 @@ public class BiobuzzRobot {
             lastPoseNanos = now;
         }
         turret.setRobotVelocity(vForward, vLeft);
+        turret.setOdometryPose(pose.x(), pose.y(), Math.toDegrees(pose.heading()));
         return pose;
     }
 

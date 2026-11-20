@@ -83,7 +83,7 @@ public class BIOBUZZ extends LinearOpMode {
                     robot.flywheel.setTargetRPM(spinRpm);
 
                     String blocker = shotBlocker(robot.turret.isTargetInBlindSpot(), robot.turret.getAimErrorDeg(),
-                            robot.flywheel.getCurrentRPM(), spinRpm, robot.turret.secondsSinceGoalSeen(), distance);
+                            robot.flywheel.getCurrentRPM(), spinRpm, robot.turret.goalAgeForShot(), distance);
                     boolean fire = gamepad1.square && blocker == null;
                     robot.transfer.setPower(gamepad1.square ? (fire ? BiobuzzRobot.TRANSFER_POWER : 0) : manualTransfer);
                     telemetry.addData("Shot", blocker == null ? "READY" : "WAIT: " + blocker);
@@ -140,6 +140,7 @@ public class BIOBUZZ extends LinearOpMode {
         double[] start = FieldAim.startPose(TurretController.ALLIANCE);
         try {
             robot.localizer.setPose(new Pose(start[0], start[1], Math.toRadians(start[2])));
+            robot.turret.forgetGoal(); // remembered goal was in the old odometry coordinates
         } catch (RuntimeException e) {
             robot.localizer = null;
             robot.odometryError = e.getMessage();
