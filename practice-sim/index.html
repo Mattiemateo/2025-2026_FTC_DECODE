@@ -83,7 +83,7 @@
 
   <h2>Controls</h2>
   <table id="controls"></table>
-  <div class="note">Share (or Enter) starts the match from INIT; hold it 1 s during a match to go back to INIT. This is a simulator shortcut, not part of the TeleOp.</div>
+  <div class="note">The touchpad (or PS button, or Enter) starts the match from INIT; hold it 1 s during a match to go back to INIT. That's the Driver Station's job on the real robot, so it is a simulator-only button. Full driver guide: <code>doc/driver-cheatsheet.md</code>.</div>
 
   <details open>
     <summary>Settings</summary>
@@ -103,6 +103,8 @@
       <option value="none">None (solo practice)</option>
       <option value="easy">Partner + 2 opponents, slow</option>
       <option value="strong">Partner + 2 opponents, quick</option></select></label>
+    <label class="set">Drivetrain drift <select id="optDriveDrift">
+      <option value="1">On (robot drifts a little; assists correct it)</option><option value="0">Off (drives perfectly straight)</option></select></label>
     <label class="set">Belly ball <select id="optBelly">
       <option value="1">Real robot: shoots 3 of 4, one stays in</option><option value="0">Fixed: shoots all 4</option></select></label>
     <label class="set">Aim helpers <select id="optHelpers">
@@ -163,21 +165,33 @@
 // Robot constants: copied from the biobuzz-season TeamCode. Update these when the Java changes.
 // ============================================================================
 const BIOBUZZ = { DRIVE_SCALE: 0.8, AIM_TOLERANCE_DEG: 2.0, RPM_TOLERANCE: 0.03, MAX_TARGET_AGE_SEC: 0.2,
-  READY_RUMBLE_MS: 200, READY_REARM_SEC: 0.5 };
+  READY_RUMBLE_MS: 200, READY_REARM_SEC: 0.5, SHARE_HOLD_SEC: 0.6 };
 const ROBOT = { INTAKE_POWER: 0.6, TRANSFER_POWER: 0.9, VELOCITY_FILTER: 0.5 };
-const FLYWHEEL = { DEFAULT_RPM: 2000, MAX_RPM: 6000 };
+const FLYWHEEL = { DEFAULT_RPM: 1800, MAX_RPM: 6000 }; // 1800 = shot-table speed for about 1 m
 const TURRET = {
   MIN_ANGLE: -170, MAX_ANGLE: 110, TURRET_MAX_POWER: 0.3, MANUAL_SPEED_DEG_PER_SEC: 80,
   SEARCH_POWER: 0.3, SEARCH_DWELL_TIME: 0.3, TARGET_LOST_TIMEOUT: 2.0,
   SEARCH_INITIAL_ANGLE: 15, SEARCH_ANGLE_INCREMENT: 20, SEARCH_MAX_ANGLE: 135,
   VISION_FILTER: 0.5, GYRO_LEAD_SEC: 0.05, AIM_MAX_POWER: 0.8, IMU_SEARCH_ENABLED: true,
   LEAD_GAIN: 1.0, POSITIVE_IS_CLOCKWISE: true,
+  // Near a limit the turret slows down; past a limit by OVERTRAVEL_DEG it is driven back.
+  LIMIT_SLOW_ZONE_DEG: 25, LIMIT_ZONE_POWER: 0.3, LIMIT_ZONE_SPEED_DEG_PER_SEC: 30, OVERTRAVEL_DEG: 3,
+  // Goal memory: aim at the last sighted goal with odometry while the camera can't see it.
+  GOAL_MEMORY_ENABLED: true, GOAL_MEMORY_FIRE_SEC: 15, GOAL_MEMORY_JUMP_IN: 12,
+};
+// DriveAssist.java
+const DRIVE_ASSIST = {
+  DEADZONE: 0.05, SNAP_DEG: 8.0, CURVE: 0.5,
+  HEADING_KP: 0.02, HEADING_KD: 0.002, HEADING_CAPTURE_RATE_DEG_PER_SEC: 20.0, HEADING_MAX_POWER: 0.4,
+  LINE_KP: 0.03, LINE_KV: 0.005, LINE_MAX_POWER: 0.3, LINE_MIN_STICK: 0.15,
 };
 const FIELD_AIM = { HIVE_X: 12.75, CELL_Y: 13.4, ROBOT_HALF_LENGTH: 9.0, START_Y: 0.0, TURRET_FORWARD_OFFSET: 0.0, HALF_FIELD: 72 };
 const SHOT_TABLE = {
-  // {horizontal distance (in), flywheel RPM, flight time (s)}
-  ROWS: [[42, 1850, 0.40], [58, 2000, 0.45], [70, 2150, 0.50], [80, 2300, 0.55]],
+  // {horizontal distance (in), flywheel RPM, flight time (s)}, measured 2026-11-20
+  ROWS: [[27.6, 1700, 0.38], [31.5, 1750, 0.39], [35.4, 1775, 0.41], [39.4, 1800, 0.42],
+         [47.2, 1900, 0.44], [59.1, 2000, 0.48], [70.9, 2100, 0.51], [82.7, 2150, 0.55]],
   INRANGE_MARGIN_IN: 6.0,
+  RPM_TRIM: 0, RPM_TRIM_STEP: 25, // D-pad left/right; kept until the robot app restarts (here: page reload)
 };
 
 // ============================================================================
@@ -196,6 +210,9 @@ const SIM = {
   camMaxDist: 150,
   shotSpreadDeg: 0.6, shotSpreadIn: 1.0,
   robotHalf: 9,            // 18 in robot
+  // Drivetrain imperfection (guess): the real robot drifts sideways and twists when driving "straight",
+  // which is why the driving assists exist. Fractions of the commanded speed; deg/s at full speed.
+  driveDrift: { strafePerForward: 0.04, forwardPerStrafe: 0.06, yawAtFullForward: 6, yawAtFullStrafe: 10 },
 };
 
 // ============================================================================
@@ -253,9 +270,9 @@ const DRIFT = {
 // ============================================================================
 // Settings (remembered in this browser)
 // ============================================================================
-const settings = { view: 'driver', length: '120', aim: 'LIMELIGHT', start: 'auto1', drift: 'config', belly: '1', npcs: 'none', helpers: '1' };
+const settings = { view: 'driver', length: '120', aim: 'LIMELIGHT', start: 'auto1', drift: 'config', belly: '1', npcs: 'none', driveDrift: '1', helpers: '1' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('biobuzz-sim-settings') || '{}')); } catch (e) {}
-const optIds = { view: 'optView', length: 'optLength', aim: 'optAim', start: 'optStart', drift: 'optDrift', belly: 'optBelly', npcs: 'optNpcs', helpers: 'optHelpers' };
+const optIds = { view: 'optView', length: 'optLength', aim: 'optAim', start: 'optStart', drift: 'optDrift', belly: 'optBelly', npcs: 'optNpcs', driveDrift: 'optDriveDrift', helpers: 'optHelpers' };
 for (const [k, id] of Object.entries(optIds)) {
   const el = document.getElementById(id);
   el.value = settings[k];
@@ -316,7 +333,8 @@ function interpolate(rows, col, d) {
   }
   return rows[rows.length - 1][col];
 }
-const shotRpm = d => interpolate(SHOT_TABLE.ROWS, 1, d);
+const shotRpm = d => interpolate(SHOT_TABLE.ROWS, 1, d) + SHOT_TABLE.RPM_TRIM;
+const manualRpm = () => Math.max(0, FLYWHEEL.DEFAULT_RPM + SHOT_TABLE.RPM_TRIM);
 const flightTime = d => interpolate(SHOT_TABLE.ROWS, 2, d);
 function shotInRange(d) {
   const r = SHOT_TABLE.ROWS;
@@ -360,8 +378,89 @@ function leadSolution(turretAngle, distanceIn, vF, vL, gain) {
   const angle = -s * Math.atan2(vy, vx) * R2D;
   return [turretAngle + wrap180(angle - turretAngle), d];
 }
-const manualVelocity = (dir, cur) => dir > 0 && cur < TURRET.MAX_ANGLE ? TURRET.MANUAL_SPEED_DEG_PER_SEC
-  : dir < 0 && cur > TURRET.MIN_ANGLE ? -TURRET.MANUAL_SPEED_DEG_PER_SEC : 0;
+function manualVelocity(dir, cur) {
+  if (dir > 0 && cur < TURRET.MAX_ANGLE) return cur > TURRET.MAX_ANGLE - TURRET.LIMIT_SLOW_ZONE_DEG ? TURRET.LIMIT_ZONE_SPEED_DEG_PER_SEC : TURRET.MANUAL_SPEED_DEG_PER_SEC;
+  if (dir < 0 && cur > TURRET.MIN_ANGLE) return cur < TURRET.MIN_ANGLE + TURRET.LIMIT_SLOW_ZONE_DEG ? -TURRET.LIMIT_ZONE_SPEED_DEG_PER_SEC : -TURRET.MANUAL_SPEED_DEG_PER_SEC;
+  return 0;
+}
+function limitZonePower(targetAngle, power) {
+  const near = targetAngle > TURRET.MAX_ANGLE - TURRET.LIMIT_SLOW_ZONE_DEG || targetAngle < TURRET.MIN_ANGLE + TURRET.LIMIT_SLOW_ZONE_DEG;
+  return near ? Math.min(power, TURRET.LIMIT_ZONE_POWER) : power;
+}
+function goalFromSighting(rx, ry, rh, turretAngle, txDeg, distanceIn) {
+  const from = turretPosition(rx, ry, rh), sg = turretSign();
+  const dir = (rh - sg * (turretAngle + sg * txDeg)) * D2R;
+  return [from[0] + distanceIn * Math.cos(dir), from[1] + distanceIn * Math.sin(dir)];
+}
+
+// ---- DriveAssist.java: stick shaping, heading hold, line hold, field-relative ----
+function newAssist() {
+  return { assistsOn: true, fieldRelative: false, fieldReferenceDeg: 0, headingTarget: NaN,
+    lineActive: false, lineSnap: 'NONE', lineSign: 0, lineOriginX: 0, lineOriginY: 0, lineDirX: 0, lineDirY: 0,
+    lastSnap: 'NONE', lastLineErrorIn: 0 };
+}
+function assistSetFieldReference(A, imuHeadingDeg) { A.fieldReferenceDeg = imuHeadingDeg; A.headingTarget = NaN; A.lineActive = false; }
+const assistCurve = x => DRIVE_ASSIST.CURVE * x * x * x + (1 - DRIVE_ASSIST.CURVE) * x;
+function shapeTranslation(forward, right) {
+  const DZ = DRIVE_ASSIST.DEADZONE, magnitude = Math.hypot(forward, right);
+  if (magnitude < DZ) return [0, 0, 'NONE'];
+  const angle = Math.atan2(right, forward) * R2D;
+  const fromForwardAxis = Math.min(Math.abs(angle), 180 - Math.abs(angle)), fromSideAxis = Math.abs(90 - Math.abs(angle));
+  let snap = 'NONE';
+  if (fromForwardAxis <= DRIVE_ASSIST.SNAP_DEG) { right = 0; snap = 'FORWARD_BACK'; }
+  else if (fromSideAxis <= DRIVE_ASSIST.SNAP_DEG) { forward = 0; snap = 'LEFT_RIGHT'; }
+  const shaped = assistCurve(Math.min(1, (magnitude - DZ) / (1 - DZ))), remaining = Math.hypot(forward, right);
+  return [forward / remaining * shaped, right / remaining * shaped, snap];
+}
+function shapeAxis(v) {
+  const m = Math.abs(v), DZ = DRIVE_ASSIST.DEADZONE;
+  return m < DZ ? 0 : Math.sign(v) * assistCurve(Math.min(1, (m - DZ) / (1 - DZ)));
+}
+function driverToRobot(forward, right, offsetDeg) {
+  const a = offsetDeg * D2R, left = -right;
+  return [forward * Math.cos(a) + left * Math.sin(a), -(-forward * Math.sin(a) + left * Math.cos(a))];
+}
+function headingHoldTurn(targetDeg, headingDeg, rate) {
+  const ccw = clamp(DRIVE_ASSIST.HEADING_KP * wrap180(targetDeg - headingDeg) - DRIVE_ASSIST.HEADING_KD * rate,
+    -DRIVE_ASSIST.HEADING_MAX_POWER, DRIVE_ASSIST.HEADING_MAX_POWER);
+  return -ccw;
+}
+function lineCorrection(dx, dy, vx, vy, dirX, dirY) {
+  const nx = -dirY, ny = dirX, error = dx * nx + dy * ny, cross = vx * nx + vy * ny;
+  const power = clamp(-(DRIVE_ASSIST.LINE_KP * error + DRIVE_ASSIST.LINE_KV * cross), -DRIVE_ASSIST.LINE_MAX_POWER, DRIVE_ASSIST.LINE_MAX_POWER);
+  return [power * nx, power * ny, error];
+}
+// Returns {forward, strafeRight, turnClockwise} for drivePowers.
+function assistUpdate(A, stickForward, stickRight, stickTurn, imuHeadingDeg, imuRate, odometryOn, x, y, odoHeadingDeg, vForward, vLeft) {
+  let f = stickForward, r = stickRight, turn = stickTurn, snap = 'NONE';
+  if (A.assistsOn) { const sh = shapeTranslation(f, r); f = sh[0]; r = sh[1]; snap = sh[2]; turn = shapeAxis(turn); }
+  A.lastSnap = snap;
+  if (A.fieldRelative) { const rb = driverToRobot(f, r, imuHeadingDeg - A.fieldReferenceDeg); f = rb[0]; r = rb[1]; }
+  if (A.assistsOn && turn === 0) {
+    if (Number.isNaN(A.headingTarget) && Math.abs(imuRate) < DRIVE_ASSIST.HEADING_CAPTURE_RATE_DEG_PER_SEC) A.headingTarget = imuHeadingDeg;
+    if (!Number.isNaN(A.headingTarget)) turn = headingHoldTurn(A.headingTarget, imuHeadingDeg, imuRate);
+  } else A.headingTarget = NaN;
+  const driving = Math.hypot(f, r) >= DRIVE_ASSIST.LINE_MIN_STICK;
+  if (A.assistsOn && odometryOn && snap !== 'NONE' && driving && Math.abs(stickTurn) < DRIVE_ASSIST.DEADZONE) {
+    const h = odoHeadingDeg * D2R, norm = Math.hypot(f, r);
+    const dirX = (f * Math.cos(h) + r * Math.sin(h)) / norm, dirY = (f * Math.sin(h) - r * Math.cos(h)) / norm;
+    const sign = snap === 'FORWARD_BACK' ? Math.sign(stickForward) : Math.sign(stickRight);
+    if (!A.lineActive || A.lineSnap !== snap || A.lineSign !== sign) {
+      Object.assign(A, { lineActive: true, lineSnap: snap, lineSign: sign, lineOriginX: x, lineOriginY: y, lineDirX: dirX, lineDirY: dirY });
+    }
+    const fvx = vForward * Math.cos(h) - vLeft * Math.sin(h), fvy = vForward * Math.sin(h) + vLeft * Math.cos(h);
+    const corr = lineCorrection(x - A.lineOriginX, y - A.lineOriginY, fvx, fvy, A.lineDirX, A.lineDirY);
+    A.lastLineErrorIn = corr[2];
+    f += corr[0] * Math.cos(h) + corr[1] * Math.sin(h);
+    r -= -corr[0] * Math.sin(h) + corr[1] * Math.cos(h);
+  } else { A.lineActive = false; A.lastLineErrorIn = 0; }
+  return [f, r, turn];
+}
+function assistStatus(A) {
+  const heading = Number.isNaN(A.headingTarget) ? 'free' : `locked ${A.headingTarget.toFixed(0)}°`;
+  const lineTxt = A.lineActive ? `on (${A.lastLineErrorIn.toFixed(1)} in off)` : 'off';
+  return `${A.assistsOn ? 'assists ON' : 'assists OFF'} | ${A.fieldRelative ? 'FIELD' : 'ROBOT'} | snap ${A.lastSnap} | heading ${heading} | line ${lineTxt}`;
+}
 
 // FieldAim.java
 function fieldGoal(alliance, cell) {
@@ -387,7 +486,8 @@ function freshTurret() {
     goalDist: 0, shotDist: 0, commanded: 0, blind: false, lastFix: -1,
     fieldAimValid: false, fieldAimAngle: 0, wasVisible: false, lostAt: 0,
     searching: false, searchAngle: TURRET.SEARCH_INITIAL_ANGLE, searchCenter: 0, searchRight: true, dwelling: false, dwellAt: 0,
-    seeing: false,
+    seeing: false, odoValid: false, odo: { x: 0, y: 0, h: 0 }, vF: 0, vL: 0,
+    memValid: false, memX: 0, memY: 0, memAt: -1, fromMemory: false, pastLimit: false,
   };
 }
 function resetToInit() {
@@ -408,7 +508,9 @@ function resetToInit() {
     npcs: [], allianceTips: { RED: 0, BLUE: 0 }, allianceAuto: { RED: 0, BLUE: 0 },
     balls: [], flying: [], popups: [],
     autoPts: 0, tips: 0, made: 0, shots: 0, trips: [], tripStart: 0, telemetry: [], shotStatus: null,
-    shareHeld: 0, lastShare: false, banner: null, lastReady: -Infinity, readyBuzzAt: -Infinity,
+    startHeld: 0, lastStart: false, banner: null, lastReady: -Infinity, readyBuzzAt: -Infinity,
+    assist: newAssist(), odometryEnabled: true, lastShareBtn: false, shareDownAt: 0, shareConsumed: false,
+    lastL3: false, lastR3: false, lastDpadLeft: false, lastDpadRight: false,
   };
   stageField();
 }
@@ -479,12 +581,12 @@ function obstacles() { return OBSTACLES; }
 // Input: PS controller (standard mapping) + keyboard fallback
 // ============================================================================
 const keys = new Set();
-let tappedShare = false; // a quick Enter tap can fall between two frames
+let tappedStart = false; // a quick Enter tap can fall between two frames
 addEventListener('keydown', e => {
   if (e.target.tagName === 'SELECT') return;
   keys.add(e.code);
-  if (e.code === 'Enter' && !e.repeat) tappedShare = true;
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (e.code === 'Enter' && !e.repeat) tappedStart = true;
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'BracketLeft', 'BracketRight'].includes(e.code)) e.preventDefault();
   unlockAudio();
 });
 addEventListener('keyup', e => keys.delete(e.code));
@@ -499,6 +601,8 @@ function readGamepad() {
     left_stick_x: 0, left_stick_y: 0, right_stick_x: 0, right_stick_y: 0, left_trigger: 0, right_trigger: 0,
     cross: false, circle: false, square: false, triangle: false, left_bumper: false, right_bumper: false,
     dpad_up: false, dpad_down: false, dpad_left: false, dpad_right: false, options: false, share: false,
+    left_stick_button: false, right_stick_button: false,
+    simStart: false, // touchpad / PS button / Enter: start and stop matches (the Driver Station's job on the real robot)
   };
   let pad = null;
   const pads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -512,7 +616,8 @@ function readGamepad() {
     Object.assign(g, {
       left_stick_x: ax(0), left_stick_y: ax(1), right_stick_x: ax(2), right_stick_y: ax(3),
       cross: bt(0), circle: bt(1), square: bt(2), triangle: bt(3), left_bumper: bt(4), right_bumper: bt(5),
-      left_trigger: bv(6), right_trigger: bv(7), share: bt(8) || bt(16) || bt(17), options: bt(9),
+      left_trigger: bv(6), right_trigger: bv(7), share: bt(8), options: bt(9),
+      left_stick_button: bt(10), right_stick_button: bt(11), simStart: bt(16) || bt(17),
       dpad_up: bt(12), dpad_down: bt(13), dpad_left: bt(14), dpad_right: bt(15),
     });
   }
@@ -527,8 +632,11 @@ function readGamepad() {
   g.triangle ||= k('KeyR'); g.square ||= k('KeyF') || k('Space');
   g.cross ||= k('KeyZ'); g.circle ||= k('KeyX');
   g.dpad_up ||= k('ArrowUp'); g.dpad_down ||= k('ArrowDown');
-  g.options ||= k('KeyO'); g.share ||= k('Enter') || tappedShare;
-  tappedShare = false;
+  g.dpad_left ||= k('BracketLeft'); g.dpad_right ||= k('BracketRight');
+  g.options ||= k('KeyO'); g.share ||= k('KeyV');
+  g.left_stick_button ||= k('KeyG'); g.right_stick_button ||= k('KeyH');
+  g.simStart ||= k('Enter') || tappedStart;
+  tappedStart = false;
   return { g, pad };
 }
 
@@ -543,25 +651,46 @@ function initLoop(gp) {
   if (changed) resetToInit();
   const tl = [];
   tl.push(`Alliance: ${S.alliance}  (Circle = RED, Cross = BLUE)`);
-  tl.push('Turret home = current position. Center it before INIT.');
+  // BiobuzzRobot.turretInitCheck (the simulated turret is always zeroed correctly)
+  tl.push(`Turret: ${S.t.angle.toFixed(0)}° from centre${gp.options ? '  (re-zeroed here)' : ''}`);
   if (settings.aim === 'ODOMETRY') tl.push('Start: back against our alliance wall, centred, facing the HIVE.');
   tl.push('Bumpers: turret | Triangle: auto-aim | Square: shoot / flywheel');
   tl.push('');
-  tl.push(S.alliance === 'ANY' ? '[sim] Pick an alliance, then press Share / Enter to start.' : '[sim] Press Share / Enter to start.');
+  tl.push(S.alliance === 'ANY' ? '[sim] Pick an alliance, then press the touchpad (or Enter) to start.' : '[sim] Press the touchpad (or Enter) to start.');
   S.telemetry = tl;
 }
+
+const imuHeading = () => wrap180(S.robot.h); // the gyro is the robot's true heading here
+const imuRate = () => S.robot.w;
 
 function opModeLoop(gp, dt) {
   const tl = [];
   S.tl = tl;
-  // robot.drive(-gamepad1.left_stick_y, gamepad1.left_stick_x, gamepad1.right_stick_x, DRIVE_SCALE)
-  S.wheels = drivePowers(-gp.left_stick_y, gp.left_stick_x, gp.right_stick_x, BIOBUZZ.DRIVE_SCALE);
+  const A = S.assist;
+  // Share: tap = odometry off/on, hold = driving assists off/on.
+  if (gp.share && !S.lastShareBtn) { S.shareDownAt = S.now; S.shareConsumed = false; }
+  if (gp.share && !S.shareConsumed && S.now - S.shareDownAt >= BIOBUZZ.SHARE_HOLD_SEC) { A.assistsOn = !A.assistsOn; S.shareConsumed = true; }
+  if (!gp.share && S.lastShareBtn && !S.shareConsumed) { S.odometryEnabled = !S.odometryEnabled; forgetGoal(); }
+  S.lastShareBtn = gp.share;
+  if (gp.left_stick_button && !S.lastL3) A.fieldRelative = !A.fieldRelative;
+  if (gp.right_stick_button && !S.lastR3) assistSetFieldReference(A, imuHeading());
+  S.lastL3 = gp.left_stick_button; S.lastR3 = gp.right_stick_button;
+
+  const pose = updateOdometry();
+  const cmd = assistUpdate(A, -gp.left_stick_y, gp.left_stick_x, gp.right_stick_x, imuHeading(), imuRate(),
+    pose !== null, pose ? pose.x : 0, pose ? pose.y : 0, pose ? pose.h : 0, S.vF, S.vL);
+  S.wheels = drivePowers(cmd[0], cmd[1], cmd[2], BIOBUZZ.DRIVE_SCALE);
+  tl.push(`Drive: ${assistStatus(A)} | odometry ${S.odometryEnabled ? 'ON' : 'OFF (Share)'}`);
+  tl.push(`Sticks (fwd / right / turn): ${(-gp.left_stick_y).toFixed(2)} / ${gp.left_stick_x.toFixed(2)} / ${gp.right_stick_x.toFixed(2)}`);
   S.intake = ROBOT.INTAKE_POWER * (gp.right_trigger - gp.left_trigger);
 
   if (gp.dpad_up) S.cell = 'FAR';
   if (gp.dpad_down) S.cell = 'AUDIENCE';
   if (gp.options) resetPoseToStart();
-  updateFieldAim(updateOdometry(), S.cell);
+  if (gp.dpad_left && !S.lastDpadLeft) SHOT_TABLE.RPM_TRIM -= SHOT_TABLE.RPM_TRIM_STEP;
+  if (gp.dpad_right && !S.lastDpadRight) SHOT_TABLE.RPM_TRIM += SHOT_TABLE.RPM_TRIM_STEP;
+  S.lastDpadLeft = gp.dpad_left; S.lastDpadRight = gp.dpad_right;
+  updateFieldAim(pose, S.cell);
 
   if (gp.triangle && !S.lastTriangle) S.autoAim = !S.autoAim;
   S.lastTriangle = gp.triangle;
@@ -576,7 +705,7 @@ function opModeLoop(gp, dt) {
     if (distance > 0) S.spinRpm = shotRpm(distance);
     setFlywheel(S.spinRpm);
     const blocker = shotBlocker(S.t.blind, Math.abs(S.t.commanded - S.t.angle), S.fly.measured, S.spinRpm,
-      S.t.lastFix < 0 ? Infinity : S.now - S.t.lastFix, distance);
+      goalAgeForShot(), distance);
     const fire = gp.square && blocker === null;
     S.transfer = gp.square ? (fire ? ROBOT.TRANSFER_POWER : 0) : manualTransfer;
     S.shotStatus = blocker === null ? 'READY' : 'WAIT: ' + blocker;
@@ -586,11 +715,18 @@ function opModeLoop(gp, dt) {
     }
     tl.push('Shot: ' + S.shotStatus);
   } else {
-    setFlywheel(gp.square ? FLYWHEEL.DEFAULT_RPM : 0);
+    setFlywheel(gp.square ? manualRpm() : 0);
     S.transfer = manualTransfer;
   }
   tl.push(`Auto-aim: ${S.autoAim ? 'ON' : 'OFF'}`);
+  if (S.autoAim && settings.aim === 'LIMELIGHT') {
+    const T = S.t;
+    tl.push(`Tracking Status: ${T.fromMemory ? 'Odometry (remembered goal)' : T.seeing ? 'Vision Locked' : T.wasVisible ? 'IMU Tracking' : 'Searching'}`);
+    tl.push(`Goal memory: ${T.memValid ? `x ${T.memX.toFixed(0)}, y ${T.memY.toFixed(0)} in (seen ${(S.now - T.memAt).toFixed(1)} s ago)${T.odoValid ? '' : ' - odometry OFF'}` : (T.odoValid ? 'none yet' : 'off (no odometry)')}`);
+  }
+  if (S.t.pastLimit) tl.push(`TURRET PAST LIMIT: ${S.t.angle.toFixed(0)}° - driving back`);
   tl.push(`Flywheel RPM (target/measured): ${S.fly.target.toFixed(0)} / ${S.fly.measured.toFixed(0)}`);
+  tl.push(`Shot speed trim: ${SHOT_TABLE.RPM_TRIM >= 0 ? '+' : ''}${SHOT_TABLE.RPM_TRIM.toFixed(0)} RPM   (D-pad left/right)`);
   tl.push('Battery: 12.8 V');
   S.telemetry = tl;
 }
@@ -602,6 +738,7 @@ function resetPoseToStart() {
   const p = startPose(S.alliance);
   Object.assign(S.odo, { x: p[0], y: p[1], h: p[2], hErr: 0 });
   S.lastOdo = null;
+  forgetGoal(); // remembered goal was in the old odometry coordinates
 }
 
 // BiobuzzRobot.updateOdometry: pose from the (drifting) odometry, robot-frame velocity for the shot lead.
@@ -618,10 +755,14 @@ function updateOdometry() {
       S.lastOdo = pose; S.lastOdoT = S.now;
     }
   } else { S.lastOdo = pose; S.lastOdoT = S.now; }
+  const T = S.t;
+  if (!S.odometryEnabled) { T.vF = 0; T.vL = 0; T.odoValid = false; return null; }
+  T.vF = S.vF; T.vL = S.vL; T.odoValid = true; T.odo = { x: pose.x, y: pose.y, h: pose.h };
   return pose;
 }
 
 function updateFieldAim(pose, cell) {
+  if (!pose) { S.t.fieldAimValid = false; S.tl.push('Odometry OFF: turned off with Share'); return; }
   S.tl.push(`Robot Pose (in, deg): x ${pose.x.toFixed(1)}  y ${pose.y.toFixed(1)}  h ${wrap180(pose.h).toFixed(1)}`);
   if (S.alliance === 'ANY') { S.t.fieldAimValid = false; return; }
   const goal = fieldGoal(S.alliance, cell);
@@ -647,7 +788,35 @@ function commandTurret(desired) {
   T.blind = Math.abs(wrap180(T.commanded - desired)) > 0.5;
   return T.commanded;
 }
-function runToPosition(target, power) { S.t.cmd = { mode: 'pos', target, power }; }
+function runToPosition(target, power) { S.t.cmd = { mode: 'pos', target, power: limitZonePower(target, power) }; }
+function forgetGoal() { S.t.memValid = false; S.t.memAt = -1; }
+function rememberGoal(m) {
+  const T = S.t;
+  if (!T.memValid || Math.hypot(m[0] - T.memX, m[1] - T.memY) > TURRET.GOAL_MEMORY_JUMP_IN) { T.memX = m[0]; T.memY = m[1]; }
+  else { T.memX += TURRET.VISION_FILTER * (m[0] - T.memX); T.memY += TURRET.VISION_FILTER * (m[1] - T.memY); }
+  T.memValid = true; T.memAt = S.now;
+}
+// Goal age for the auto-fire check: 0 while aiming at a remembered goal that is still trusted.
+function goalAgeForShot() {
+  const T = S.t;
+  if (T.fromMemory && T.memValid && S.now - T.memAt < TURRET.GOAL_MEMORY_FIRE_SEC) return 0;
+  return T.lastFix < 0 ? Infinity : S.now - T.lastFix;
+}
+function aimAtRememberedGoal(imuHeadingDeg) {
+  const T = S.t, from = turretPosition(T.odo.x, T.odo.y, T.odo.h);
+  const goalAngle = turretAngleToPoint(from[0], from[1], T.odo.h + S.robot.w * TURRET.GYRO_LEAD_SEC, T.memX, T.memY);
+  T.goalDist = Math.hypot(T.memX - from[0], T.memY - from[1]);
+  const lead = leadSolution(goalAngle, T.goalDist, T.vF, T.vL, TURRET.LEAD_GAIN);
+  T.aimTarget = lead[0]; T.shotDist = lead[1];
+  T.bearing = wrap180(goalAngle - turretSign() * imuHeadingDeg); // camera picks up smoothly when the tags return
+  runToPosition(commandTurret(T.aimTarget), TURRET.AIM_MAX_POWER);
+}
+// Last line of defence: past a limit, override every command and drive back inside.
+function enforceLimits() {
+  const T = S.t;
+  T.pastLimit = T.angle > TURRET.MAX_ANGLE + TURRET.OVERTRAVEL_DEG || T.angle < TURRET.MIN_ANGLE - TURRET.OVERTRAVEL_DEG;
+  if (T.pastLimit) { const inside = clampAngle(T.angle); T.manualTarget = inside; T.cmd = { mode: 'pos', target: inside, power: TURRET.LIMIT_ZONE_POWER }; }
+}
 function turretUpdate() {
   const T = S.t;
   T.seeing = false;
@@ -661,13 +830,14 @@ function turretUpdate() {
     if (v !== 0) { T.cmd = { mode: 'vel', v }; T.manualTarget = clampAngle(T.angle); }
     else runToPosition(clampAngle(T.manualTarget), TURRET.TURRET_MAX_POWER);
   }
+  enforceLimits();
 }
 function aimAtBearing(heading) {
   const T = S.t;
   const leadHeading = heading + S.robot.w * TURRET.GYRO_LEAD_SEC;
   const goalAngle = turretAngleFor(T.bearing, leadHeading);
   if (T.goalDist > 0) {
-    const lead = leadSolution(goalAngle, T.goalDist, S.vF, S.vL, TURRET.LEAD_GAIN);
+    const lead = leadSolution(goalAngle, T.goalDist, T.vF, T.vL, TURRET.LEAD_GAIN);
     T.aimTarget = lead[0]; T.shotDist = lead[1];
   } else { T.aimTarget = goalAngle; T.shotDist = 0; }
   runToPosition(commandTurret(T.aimTarget), TURRET.AIM_MAX_POWER);
@@ -693,13 +863,19 @@ function updateAutoAim() {
     if (T.searching) { T.searching = false; T.searchAngle = TURRET.SEARCH_INITIAL_ANGLE; }
     const measured = fieldBearing(T.angle, fix.tx, heading);
     T.bearing = T.wasVisible ? wrap180(T.bearing + TURRET.VISION_FILTER * wrap180(measured - T.bearing)) : measured;
-    T.wasVisible = true; T.lostAt = S.now;
+    if (T.odoValid && fix.dist > 0) rememberGoal(goalFromSighting(T.odo.x, T.odo.y, T.odo.h, T.angle, fix.tx, fix.dist));
+    T.wasVisible = true; T.lostAt = S.now; T.fromMemory = false;
     aimAtBearing(heading);
     T.goalDist = fix.dist; T.lastFix = S.now;
+  } else if (TURRET.GOAL_MEMORY_ENABLED && T.memValid && T.odoValid) {
+    T.fromMemory = true; T.searching = false;
+    aimAtRememberedGoal(heading);
   } else if (T.wasVisible && S.now - T.lostAt < TURRET.TARGET_LOST_TIMEOUT && TURRET.IMU_SEARCH_ENABLED) {
+    T.fromMemory = false;
     aimAtBearing(heading);
     T.searching = false;
   } else {
+    T.fromMemory = false;
     T.wasVisible = false;
     if (!T.searching) {
       T.searching = true; T.searchCenter = T.angle; T.searchAngle = TURRET.SEARCH_INITIAL_ANGLE; T.searchRight = true; T.dwelling = false;
@@ -718,7 +894,7 @@ function updateAutoAim() {
         T.searchAngle = Math.min(T.searchAngle + TURRET.SEARCH_ANGLE_INCREMENT, TURRET.SEARCH_MAX_ANGLE);
       } else move = true;
     }
-    if (move) runToPosition(target, TURRET.SEARCH_POWER);
+    if (move) runToPosition(clampAngle(target), TURRET.SEARCH_POWER);
   }
 }
 
@@ -810,13 +986,19 @@ function physics(dt) {
   const D = DRIVE;
   const vf = (p[0] + p[1] + p[2] + p[3]) / 4 * D.maxAchievableForwardVelocity;
   const vs = (p[0] - p[1] - p[2] + p[3]) / 4 * D.maxAchievableStrafeVelocity; // + = right
-  const wt = (p[0] - p[1] + p[2] - p[3]) / 4 * D.maxTurnRate;                 // + = clockwise
+  let wt = (p[0] - p[1] + p[2] - p[3]) / 4 * D.maxTurnRate;                   // + = clockwise
+  let vfd = vf, vsd = vs;
+  if (settings.driveDrift === '1') { // wheels slip unevenly: some sideways drift and twist
+    const dd = SIM.driveDrift;
+    vsd = vs + dd.strafePerForward * vf; vfd = vf + dd.forwardPerStrafe * vs;
+    wt += dd.yawAtFullForward * vf / D.maxAchievableForwardVelocity + dd.yawAtFullStrafe * vs / D.maxAchievableStrafeVelocity;
+  }
   const h = R.h * D2R, c = Math.cos(h), s = Math.sin(h);
   const b = brakeDecels();
   // Speed up and slow down in the robot frame, so momentum carries through turns.
   let cf = R.vx * c + R.vy * s, cr = R.vx * s - R.vy * c;
-  cf = approach(cf, vf, D.maxAchievableForwardVelocity / D.accelerationTime, b.forward, dt);
-  cr = approach(cr, vs, D.maxAchievableStrafeVelocity / D.accelerationTime, b.strafe, dt);
+  cf = approach(cf, vfd, D.maxAchievableForwardVelocity / D.accelerationTime, b.forward, dt);
+  cr = approach(cr, vsd, D.maxAchievableStrafeVelocity / D.accelerationTime, b.strafe, dt);
   const turnAcc = D.maxTurnRate / D.accelerationTime;
   R.w = approach(R.w, -wt, turnAcc, turnAcc * b.forward / (D.maxAchievableForwardVelocity / D.accelerationTime), dt);
   R.vx = cf * c + cr * s; R.vy = cf * s - cr * c;
@@ -1202,6 +1384,7 @@ function startMatch() {
   S.phase = 'running'; S.matchTime = 0; S.tips = 0; S.myTipPts = 0; S.made = 0; S.shots = 0; S.trips = []; S.tripStart = 0;
   // OpMode start: auto-aim off, spinRpm = DEFAULT_RPM, cell FAR, resetPoseToStart()
   S.autoAim = false; S.spinRpm = FLYWHEEL.DEFAULT_RPM; S.cell = 'FAR'; resetPoseToStart();
+  assistSetFieldReference(S.assist, imuHeading()); // robot starts facing away from the drivers
   beep(660, 0.15);
 }
 function bestKey() { return `biobuzz-sim-best-${settings.length}-${settings.start}`; }
@@ -1257,14 +1440,14 @@ function frame(nowMs) {
 function tick(dt, g) {
   S.gp = g;
 
-  // Share: start from INIT, back to INIT from the end screen, hold 1 s to abort a match
-  if (g.share && !S.lastShare) {
+  // Touchpad / PS / Enter (simulator only): start from INIT, back to INIT from the end screen, hold 1 s to abort
+  if (g.simStart && !S.lastStart) {
     if (S.phase === 'init') { unlockAudio(); startMatch(); }
     else if (S.phase === 'ended') resetToInit();
   }
-  if (S.phase === 'running' && g.share) { S.shareHeld += dt; if (S.shareHeld > 1) { resetToInit(); S.lastShare = true; } }
-  else S.shareHeld = 0;
-  S.lastShare = g.share;
+  if (S.phase === 'running' && g.simStart) { S.startHeld += dt; if (S.startHeld > 1) { resetToInit(); S.lastStart = true; } }
+  else S.startHeld = 0;
+  S.lastStart = g.simStart;
 
   if (S.phase === 'init') initLoop(g);
   else if (S.phase === 'running') {
@@ -1566,8 +1749,8 @@ function drawHud() {
   if (S.phase !== 'running') {
     ctx.textAlign = 'center'; ctx.font = '600 16px system-ui';
     const msg = S.phase === 'init'
-      ? (S.alliance === 'ANY' ? 'INIT: press Circle for RED or Cross for BLUE' : `INIT: ${S.alliance} alliance. Press Share (or Enter) to start`)
-      : `Match over: ${S.final.total} pts (${S.final.auto ? `auto ${S.final.auto} + ` : ''}${S.tips} tips ${S.final.tips} + CELL ${S.final.cell} + GARDEN ${S.final.garden} + PARK ${S.final.park}). Share = new match`;
+      ? (S.alliance === 'ANY' ? 'INIT: press Circle for RED or Cross for BLUE' : `INIT: ${S.alliance} alliance. Press the touchpad (or Enter) to start`)
+      : `Match over: ${S.final.total} pts (${S.final.auto ? `auto ${S.final.auto} + ` : ''}${S.tips} tips ${S.final.tips} + CELL ${S.final.cell} + GARDEN ${S.final.garden} + PARK ${S.final.park}). Touchpad = new match`;
     const tw = ctx.measureText(msg).width + 32;
     ctx.fillStyle = 'rgba(23,26,33,.92)'; const my = Math.min(H - 46, view.cy + 80 * view.s + 12);
     roundRect(W / 2 - tw / 2, my, tw, 36, 18); ctx.fill();
@@ -1581,20 +1764,24 @@ function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRe
 // Side panel
 // ============================================================================
 const CONTROLS = [
-  ['ls', 'Left stick', 'Drive / strafe (robot-relative, 80%)', 'W A S D'],
+  ['ls', 'Left stick', 'Drive / strafe (80%), with assists: straight zone, heading hold, line hold', 'W A S D'],
   ['rs', 'Right stick X', 'Turn', '← →'],
+  ['l3', 'L3 (press)', 'Field-relative driving on/off: stick forward = away from the drivers', 'G'],
+  ['r3', 'R3 (press)', '"Away from the drivers" = the way the robot faces now', 'H'],
   ['rt', 'R2', 'Intake in (60%)', 'I'],
   ['lt', 'L2', 'Intake out', 'K'],
   ['rb', 'R1', 'Turret clockwise (80°/s)', 'E'],
   ['lb', 'L1', 'Turret counter-clockwise', 'Q'],
   ['tri', '△ Triangle', 'Toggle auto-aim', 'R'],
-  ['sq', '□ Square', 'Auto-aim ON: hold to shoot · OFF: flywheel 2000 RPM', 'F / Space'],
+  ['sq', '□ Square', 'Auto-aim ON: hold to shoot · OFF: flywheel 1800 RPM (about 1 m)', 'F / Space'],
   ['x', '✕ Cross', 'Transfer forward (INIT: BLUE)', 'Z'],
   ['o', '○ Circle', 'Transfer reverse (INIT: RED)', 'X'],
   ['dp', 'D-pad ↑ / ↓', 'FAR / AUDIENCE CELL is up (odometry aim)', '↑ ↓'],
-  ['opt', 'Options', 'Robot is at its start spot: re-zero odometry', 'O'],
+  ['dlr', 'D-pad ← / →', 'Shot speed trim −/+ 25 RPM (every shot)', '[ ]'],
+  ['opt', 'Options', 'Robot is at its start spot: re-zero odometry (INIT: re-zero turret)', 'O'],
+  ['sh', 'Share', 'Tap: odometry off/on · hold 0.6 s: driving assists off/on', 'V'],
   ['rum', '(rumble)', 'Buzz when the shot turns READY: press Square now', ''],
-  ['sh', 'Share', 'Start match (simulator only)', 'Enter'],
+  ['tp', 'Touchpad', 'Start / stop the match (simulator only)', 'Enter'],
 ];
 const ctrlTable = document.getElementById('controls');
 ctrlTable.innerHTML = CONTROLS.map(([id, k, a, kb]) => `<tr id="c-${id}"><td class="k">${k}</td><td>${a}<span class="ignored" id="n-${id}"></span></td><td class="kb">${kb}</td></tr>`).join('');
@@ -1605,6 +1792,7 @@ function updatePanel(g, pad) {
     ls: g.left_stick_x !== 0 || g.left_stick_y !== 0, rs: g.right_stick_x !== 0,
     rt: g.right_trigger > 0.02, lt: g.left_trigger > 0.02, rb: g.right_bumper, lb: g.left_bumper,
     tri: g.triangle, sq: g.square, x: g.cross, o: g.circle, dp: g.dpad_up || g.dpad_down, opt: g.options, sh: g.share,
+    l3: g.left_stick_button, r3: g.right_stick_button, dlr: g.dpad_left || g.dpad_right, tp: g.simStart,
     rum: S.now - S.readyBuzzAt < BIOBUZZ.READY_RUMBLE_MS / 1000,
   };
   for (const id in on) if (active[id] !== on[id]) { active[id] = on[id]; document.getElementById('c-' + id).classList.toggle('active', on[id]); }
@@ -1642,7 +1830,7 @@ function updatePanel(g, pad) {
   btn.style.opacity = btn.disabled ? 0.5 : 1;
   document.getElementById('phaseNote').textContent = S.phase === 'init'
     ? (S.alliance === 'ANY' ? 'INIT: pick an alliance with Circle (RED) or Cross (BLUE).' : (settings.start === 'auto1' ? `INIT: ${S.alliance}. Auto is done: 1 TIP, robot parked in the LOADING ZONE.` : `INIT: ${S.alliance}. Robot at its start spot with 4 pre-loads.`))
-    : S.phase === 'running' ? 'Match running. Hold Share for 1 s to go back to INIT.' : 'Match over.';
+    : S.phase === 'running' ? 'Match running. Hold the touchpad (or Enter) for 1 s to go back to INIT.' : 'Match over.';
 }
 
 // ============================================================================

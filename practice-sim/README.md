@@ -7,24 +7,48 @@ A 2D top-down practice game for the **BIOBUZZ** TeleOp. It runs in a browser and
 1. Connect a PS4 (DualShock 4) or PS5 (DualSense) controller to the Mac over USB or Bluetooth.
 2. Open `index.html` in **Chrome** (recommended) or Safari. Double-clicking the file works. No install or internet needed.
 3. Press any button on the controller so the browser detects it. The dot in the side panel turns green.
-4. **INIT:** Circle = RED, Cross = BLUE (as on the robot). Then press **Share** (or Enter) to start the match.
+4. **INIT:** Circle = RED, Cross = BLUE (as on the robot). Then press the **touchpad** (or the PS button, or Enter) to start the match.
 
-Hold Share for 1 second during a match to go back to INIT. Share is a simulator-only shortcut: the TeleOp itself doesn't use it.
+Hold the touchpad (or Enter) for 1 second during a match to go back to INIT. On the real robot the Driver Station starts the OpMode, so this is a simulator-only button; Share now does what it does on the robot.
 
 ## Controls (same as the TeleOp)
 
+The driver cheat sheet, [`doc/driver-cheatsheet.md`](../doc/driver-cheatsheet.md), applies to the sim as well.
+
 | Controller | Action | Keyboard |
 | --- | --- | --- |
-| Left stick | Drive / strafe (robot-relative, 80%) | W A S D |
+| Left stick | Drive / strafe (80%), with the driving assists | W A S D |
 | Right stick X | Turn | ← → |
+| L3 (press) | Field-relative driving on/off: stick forward = away from the drivers | G |
+| R3 (press) | "Away from the drivers" = the way the robot faces now | H |
 | R2 / L2 | Intake in / out (60%) | I / K |
-| R1 / L1 | Turret clockwise / counter-clockwise (80°/s, ignored while auto-aim is on) | E / Q |
+| R1 / L1 | Turret clockwise / counter-clockwise (80°/s, 30°/s near a limit; ignored while auto-aim is on) | E / Q |
 | Triangle | Toggle auto-aim | R |
-| Square | Auto-aim ON: hold to shoot (fires only when every check passes). OFF: flywheel 2000 RPM | F / Space |
+| Square | Auto-aim ON: hold to shoot (fires only when every check passes). OFF: flywheel 1800 RPM, right for about 1 m | F / Space |
 | Cross / Circle | Transfer forward / reverse | Z / X |
 | D-pad ↑ / ↓ | FAR / AUDIENCE CELL is up (odometry aim) | ↑ / ↓ |
-| Options | Re-zero odometry at the start spot | O |
+| D-pad ← / → | Shot speed trim −/+ 25 RPM on every shot. Kept until the page reloads, like the robot keeps it until its app restarts | [ / ] |
+| Options | Re-zero odometry at the start spot (also forgets the remembered goal) | O |
+| Share, tap | Odometry off/on: no line hold, goal memory, shot lead or odometry aim | V |
+| Share, hold 0.6 s | Driving assists off/on | V (hold) |
 | (rumble) | A 200 ms buzz when the shot turns READY with auto-aim on and Square not held, as on the robot. The HUD's READY badge pulses too, in case the browser can't rumble the controller. | |
+| Touchpad | Start / stop the match (simulator only) | Enter |
+
+**Driving assists** (ported from `DriveAssist.java`, on by default):
+- **Straight zone:** within 8° of pure forward/back or left/right, the stick snaps straight.
+- **Response curve:** gives finer slow control.
+- **Heading hold:** uses the gyro.
+- **Line hold:** uses odometry.
+- **Telemetry:** the `Drive` line shows the state, as on the Driver Station.
+
+**Drivetrain drift (sim only):** the sim's robot drifts a little sideways and twists when driving straight, like the real robot does. Otherwise the assists would have nothing to correct.
+- The amounts are guesses in `SIM.driveDrift`: about 1 in. sideways and 1° of twist with the assists on over a 1.2 s full-speed drive, about 3 in. and 6° with them off.
+- Settings → *Drivetrain drift* → Off makes the robot drive perfectly straight.
+
+**Goal memory:**
+- Every camera sighting stores the goal in odometry coordinates.
+- Closer than 45 in., or with the goal out of view, the turret aims at the stored goal. It can fire for 15 s after the last sighting, so close shots work down to the shot table's 22 in.
+- `Tracking Status` and `Goal memory` show in telemetry.
 
 ## What matches the robot code
 
