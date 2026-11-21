@@ -16,11 +16,11 @@ TeleOp **BIOBUZZ**, one PlayStation controller (gamepad 1). Keep this in sync wi
 
 | Situation | Run | We start at |
 |---|---|---|
-| We take the upward CELL (partner can't tip, or starts elsewhere) | **Auto 1: Hive Front** | the **upward** CELL |
-| Partner tips from the upward CELL; if it fails, we tip it ourselves | **Auto 2: Second Cell Fallback TIP** | the **downward** CELL |
-| Partner tips from the upward CELL; if it fails, we just park | **Auto 3: Second Cell Fallback PARK** | the **downward** CELL |
+| We take the upward CELL (partner can't tip, or starts elsewhere) | **Auto 1: Hive Front** | RED **C1** / BLUE **D6** |
+| Partner tips from the upward CELL; if it fails, we tip it ourselves | **Auto 2: Second Cell Fallback TIP** | RED **C6** / BLUE **D1** |
+| Partner tips from the upward CELL; if it fails, we just park | **Auto 3: Second Cell Fallback PARK** | RED **C6** / BLUE **D1** |
 
-Standing behind our alliance wall: the loading zone is on the left, the garden in the right corner, and at the start the upward CELL is the **left** one (loading-zone side), the downward CELL the **right** one. Back of the robot on our alliance wall, facing the HIVE, centred on that CELL; INIT shows it. Pick the alliance, preload 4 POLLEN. The TeleOp then continues from where autonomous ended.
+Tiles: columns A-F from the red wall, rows 1-6 from the audience. At the start RED's upward CELL is **C3** (BLUE: D4). Back of the robot on the audience wall (C1) or the far wall (C6), facing the HIVE, lined up with the CELL straight ahead; INIT shows the tile. Our loading zone is A5 (BLUE: F2), our garden A1 (BLUE: F6). Pick the alliance, preload 4 POLLEN. The TeleOp then continues from where autonomous ended.
 
 ## Controls
 

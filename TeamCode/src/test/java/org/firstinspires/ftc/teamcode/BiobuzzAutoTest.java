@@ -13,71 +13,108 @@ public class BiobuzzAutoTest {
         return Math.hypot(a[0] - b[0], a[1] - b[1]);
     }
 
+    /** Tile name (A1..F6) for a RED-frame point. */
+    private static String tile(double[] p) {
+        return "" + (char) ('A' + (int) Math.floor((p[0] + 72) / 24)) + (1 + (int) Math.floor((p[1] + 72) / 24));
+    }
+
     @Test
     public void blueSpotsAreRedSpotsTurnedAboutTheFieldCentre() {
         assertArrayEquals(new double[] {58, -36, 180}, AutoField.forAlliance(new double[] {-58, 36, 0}, Alliance.BLUE), 1e-9);
         assertArrayEquals(new double[] {-58, 36, 0}, AutoField.forAlliance(new double[] {-58, 36, 0}, Alliance.RED), 1e-9);
         double[] p = {-40, -62, 180};
         assertArrayEquals(p, AutoField.toRed(AutoField.forAlliance(p, Alliance.BLUE), Alliance.BLUE), 1e-9);
-        // RED's upward start CELL (far, next to the LOADING ZONE) maps onto BLUE's (audience).
-        assertArrayEquals(FieldAim.goal(Alliance.RED, FieldAim.Cell.FAR), AutoField.startUpCell(), 1e-9);
+        // RED's upward start CELL (C3, audience side) maps onto BLUE's (D4, far side).
+        assertArrayEquals(FieldAim.goal(Alliance.RED, FieldAim.Cell.AUDIENCE), AutoField.startUpCell(), 1e-9);
         double[] blue = AutoField.forAlliance(AutoField.startUpCell(), Alliance.BLUE);
-        assertArrayEquals(FieldAim.goal(Alliance.BLUE, FieldAim.Cell.AUDIENCE), blue, 1e-9);
+        assertArrayEquals(FieldAim.goal(Alliance.BLUE, FieldAim.Cell.FAR), blue, 1e-9);
         // Tag clusters: 0 red far, 1 red audience, 2 blue audience, 3 blue far.
-        assertEquals(0, AutoField.startUpCluster(Alliance.RED));
-        assertEquals(1, AutoField.startDownCluster(Alliance.RED));
-        assertEquals(2, AutoField.startUpCluster(Alliance.BLUE));
-        assertEquals(3, AutoField.startDownCluster(Alliance.BLUE));
+        assertEquals(1, AutoField.startUpCluster(Alliance.RED));
+        assertEquals(0, AutoField.startDownCluster(Alliance.RED));
+        assertEquals(3, AutoField.startUpCluster(Alliance.BLUE));
+        assertEquals(2, AutoField.startDownCluster(Alliance.BLUE));
     }
 
     @Test
-    public void startSpotsTouchTheWallAndLineUpWithTheirCell() {
+    public void startSpotsMatchTheTeamsDrawing() {
         double[] up = AutoField.startAtUpCell(), down = AutoField.startAtDownCell();
-        assertEquals(-72, up[0] - FieldAim.ROBOT_HALF_LENGTH, 1e-9);
-        assertEquals(AutoField.startUpCell()[1], up[1], 1e-9);
-        assertEquals(AutoField.startDownCell()[1], down[1], 1e-9);
-        // The upward CELL is on the LOADING ZONE side (y 24..48), but the start is not in it.
-        assertTrue(up[1] > down[1]);
-        assertTrue(up[1] + AutoField.ROBOT_HALF_WIDTH < 24);
-        assertTrue(AutoField.leaveSpot(up)[0] > up[0]);
+        // Auto 1: C1, back on the audience wall, facing the HIVE (+Y), C3 straight ahead.
+        assertEquals("C1", tile(up));
+        assertEquals("C3", tile(AutoField.startUpCell()));
+        assertEquals(-72, up[1] - FieldAim.ROBOT_HALF_LENGTH, 1e-9);
+        assertEquals(90, up[2], 1e-9);
+        assertEquals(AutoField.startUpCell()[0], up[0], 1e-9);
+        // Auto 2/3: C6, back on the far wall, facing the HIVE (-Y), C4 straight ahead.
+        assertEquals("C6", tile(down));
+        assertEquals("C4", tile(AutoField.startDownCell()));
+        assertEquals(72, down[1] + FieldAim.ROBOT_HALF_LENGTH, 1e-9);
+        assertEquals(-90, down[2], 1e-9);
+        // Whole robot on our half (x < 0).
+        assertTrue(up[0] + AutoField.ROBOT_HALF_WIDTH < 0);
+        // BLUE: D6 and D1.
+        assertEquals("D6", tile(AutoField.forAlliance(up, Alliance.BLUE)));
+        assertEquals("D1", tile(AutoField.forAlliance(down, Alliance.BLUE)));
     }
 
     @Test
-    public void shotsAreFromAboutOnePointTwoMetresAndInsideTheShotTable() {
+    public void autoOneLeavesForwardShootsAndParksInA5() {
+        double[] start = AutoField.startAtUpCell();
+        double[] leave = AutoField.leaveSpot(start);
+        assertEquals(start[0], leave[0], 1e-9);
+        assertEquals(start[1] + AutoField.LEAVE_IN, leave[1], 1e-9); // forward = toward the HIVE
+        assertTrue(ShotTable.inRange(distance(leave, AutoField.startUpCell())));
+        double[][] route = AutoField.parkRoute(leave[0], leave[1], leave[2]);
+        double[] park = route[route.length - 1];
+        assertEquals("A5", tile(park));
+        assertTrue(park[0] - FieldAim.ROBOT_HALF_LENGTH < -61); // overlaps the LOADING ZONE (x -72..-61)
+        // Up the lane, clear of the HIVE legs (x about -25) and the GARDEN corner (x < -48).
+        assertEquals(AutoField.LANE_X, route[0][0], 1e-9);
+        assertTrue(AutoField.LANE_X + AutoField.ROBOT_HALF_WIDTH < -25);
+        assertTrue(AutoField.LANE_X - AutoField.ROBOT_HALF_WIDTH > -50);
+        for (double[] p : route) assertEquals(90, p[2], 1e-9); // no turning on the way
+    }
+
+    @Test
+    public void shotsAreFromAboutOnePointTwoMetresAndReachable() {
         double[] garden = AutoField.gardenShot(), fallback = AutoField.fallbackShot();
         assertEquals(120, distance(garden, AutoField.startDownCell()) * 2.54, 1);
         assertEquals(120, distance(fallback, AutoField.startUpCell()) * 2.54, 1);
-        assertTrue(ShotTable.inRange(distance(garden, AutoField.startDownCell())));
-        // Op mode 1 shoots right after leaving the wall.
-        assertTrue(ShotTable.inRange(distance(AutoField.leaveSpot(AutoField.startAtUpCell()), AutoField.startUpCell())));
-        // The turret can reach every shot facing the HIVE (heading 0).
+        assertTrue(ShotTable.inRange(distance(AutoField.startAtDownCell(), AutoField.startDownCell())));
         for (double[][] shot : new double[][][] {{garden, AutoField.startDownCell()}, {fallback, AutoField.startUpCell()}}) {
-            double angle = TurretController.turretAngleToPoint(shot[0][0], shot[0][1], 0, shot[1][0], shot[1][1]);
+            double angle = TurretController.turretAngleToPoint(shot[0][0], shot[0][1], shot[0][2], shot[1][0], shot[1][1]);
             assertTrue(angle > TurretController.MIN_ANGLE && angle < TurretController.MAX_ANGLE);
+            assertTrue(shot[0][0] + AutoField.ROBOT_HALF_WIDTH < 0);
         }
-    }
-
-    @Test
-    public void parkSpotOverlapsTheLoadingZone() {
-        double[] park = AutoField.park();
-        assertTrue(park[0] - FieldAim.ROBOT_HALF_LENGTH < -61); // LOADING ZONE: x -72..-61
-        assertTrue(park[1] > 24 && park[1] < 48);
-        // Close by it parks straight away.
-        assertEquals(1, AutoField.parkRoute(park[0], park[1] - 10).length);
-        // From the audience side it goes out to the lane first.
-        double[][] route = AutoField.parkRoute(-36, -54);
-        assertEquals(3, route.length);
-        assertEquals(AutoField.LANE_X, route[0][0], 1e-9);
+        // The GARDEN shot is in the LOADING ZONE already: park from there without a detour.
+        assertEquals(1, AutoField.parkRoute(garden[0], garden[1], 0).length);
     }
 
     @Test
     public void gardenRunPassesAllFourPollenAlongTheWall() {
-        double[] start = AutoField.gardenStart(), end = AutoField.gardenEnd();
+        double[][] route = AutoField.gardenRoute();
+        double[] start = route[route.length - 1], end = AutoField.gardenEnd();
         assertEquals(-72 + AutoField.ROBOT_HALF_WIDTH + AutoField.GARDEN_WALL_GAP_IN, start[1], 1e-9);
         assertEquals(180, start[2], 1e-9);
         // POLLEN centres x -70.6..-62.2; the robot's front (intake) must pass the last one.
         assertTrue(start[0] - FieldAim.ROBOT_HALF_LENGTH > -62.2);
         assertTrue(end[0] - FieldAim.ROBOT_HALF_LENGTH < -70.6);
+        assertEquals(AutoField.LANE_X, route[0][0], 1e-9);
+    }
+
+    @Test
+    public void fallbackGoesUnderTheHiveThenRightClearOfThePartner() {
+        double[][] route = AutoField.fallbackRoute();
+        double[] under = route[0], spot = route[route.length - 1], start = AutoField.startAtDownCell();
+        // Straight ahead from C6 (same x), past both CELLs of the HIVE.
+        assertEquals(start[0], under[0], 1e-9);
+        assertTrue(under[1] < AutoField.startUpCell()[1]);
+        // Then right (toward our wall, -X, when facing the audience).
+        assertTrue(spot[0] < under[0]);
+        // Clear of the partner robot in C1 (y up to -72 + 18 = -54).
+        double partnerTop = -72 + 2 * FieldAim.ROBOT_HALF_LENGTH;
+        assertTrue(under[1] - FieldAim.ROBOT_HALF_LENGTH > partnerTop);
+        assertTrue(spot[0] + AutoField.ROBOT_HALF_WIDTH < AutoField.startAtUpCell()[0] - AutoField.ROBOT_HALF_WIDTH
+            || spot[1] - AutoField.ROBOT_HALF_WIDTH > partnerTop);
     }
 
     @Test
@@ -96,33 +133,11 @@ public class BiobuzzAutoTest {
     }
 
     @Test
-    public void opModeOneParksFromItsStartIntoTheLoadingZone() {
-        // The bug from the first field test: the start spot must be on the LOADING ZONE side, so the
-        // park route only has to cover the short distance up to the zone.
-        double[] leave = AutoField.leaveSpot(AutoField.startAtUpCell());
-        double[][] route = AutoField.parkRoute(leave[0], leave[1]);
-        double[] last = route[route.length - 1];
-        assertTrue(Math.abs(last[1] - leave[1]) < 30);
-        assertTrue(last[1] > leave[1]); // the zone is to the robot's left (+Y for RED facing +X)
-    }
-
-    @Test
-    public void fallbackGoesUnderTheHiveThenRightAndStaysOnOurHalf() {
-        double[][] route = AutoField.fallbackRoute();
-        double[] under = route[0], spot = route[route.length - 1];
-        // Straight ahead from the start, under the HIVE (its CELLs span about x -22.75..-2.75).
-        assertEquals(AutoField.startAtDownCell()[1], under[1], 1e-9);
-        assertTrue(under[0] + FieldAim.ROBOT_HALF_LENGTH > -22.75);
-        // Then right (-Y for RED facing +X), and the whole robot stays on our half (G402).
-        assertTrue(spot[1] < under[1]);
-        assertTrue(spot[0] + AutoField.ROBOT_HALF_WIDTH < 0);
-    }
-
-    @Test
-    public void startHintNamesTheRightSide() {
-        assertTrue(BiobuzzAuto.startHint(BiobuzzAuto.Plan.HIVE_FRONT, Alliance.RED).contains("LEFT"));
-        assertTrue(BiobuzzAuto.startHint(BiobuzzAuto.Plan.HIVE_FRONT, Alliance.BLUE).contains("LEFT"));
-        assertTrue(BiobuzzAuto.startHint(BiobuzzAuto.Plan.SECOND_CELL_TIP, Alliance.RED).contains("RIGHT"));
-        assertTrue(BiobuzzAuto.startHint(BiobuzzAuto.Plan.SECOND_CELL_PARK, Alliance.BLUE).contains("RIGHT"));
+    public void startHintNamesTheTile() {
+        assertTrue(BiobuzzAuto.startHint(BiobuzzAuto.Plan.HIVE_FRONT, Alliance.RED).contains("C1"));
+        assertTrue(BiobuzzAuto.startHint(BiobuzzAuto.Plan.HIVE_FRONT, Alliance.RED).contains("audience"));
+        assertTrue(BiobuzzAuto.startHint(BiobuzzAuto.Plan.HIVE_FRONT, Alliance.BLUE).contains("D6"));
+        assertTrue(BiobuzzAuto.startHint(BiobuzzAuto.Plan.SECOND_CELL_TIP, Alliance.RED).contains("C6"));
+        assertTrue(BiobuzzAuto.startHint(BiobuzzAuto.Plan.SECOND_CELL_PARK, Alliance.BLUE).contains("D1"));
     }
 }

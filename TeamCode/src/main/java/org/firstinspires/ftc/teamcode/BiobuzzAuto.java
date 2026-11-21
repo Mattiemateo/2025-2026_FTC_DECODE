@@ -10,9 +10,9 @@ import org.firstinspires.ftc.teamcode.TurretController.Alliance;
  * BLUE). Driving uses odometry only (point to point), shooting uses the TeleOp's auto-aim and
  * READY checks. AUTO is 30 s; scoring stops at PARK_BY_SEC so there is always time to park.
  *
- *   HIVE_FRONT: start at the upward CELL. Auto-aim finds it, leave the wall, shoot the 4 preloads,
+ *   HIVE_FRONT: start at the upward CELL (RED: C1). Auto-aim finds it, leave the wall, shoot the 4 preloads,
  *     park in the LOADING ZONE.
- *   SECOND_CELL_TIP: start at the downward CELL and watch it. When our partner tips the HIVE (that
+ *   SECOND_CELL_TIP: start at the downward CELL (RED: C6) and watch it. When our partner tips the HIVE (that
  *     CELL comes up), shoot the preloads into it, collect the 4 GARDEN POLLEN, shoot them from 1.2 m
  *     and park. Not tipped within TIP_CUTOFF_SEC: shoot the preloads into the original upward CELL
  *     from 1.2 m (drive under the HIVE, then right, shoot diagonally), then park.
@@ -113,10 +113,7 @@ public abstract class BiobuzzAuto extends LinearOpMode {
             setAutoAim(true);
             shoot("shoot preloads (partner tipped)");
             collectGarden();
-            driveRoute("to 1.2 m shot", new double[][] {
-                {AutoField.LANE_X, AutoField.gardenY() + 7, 0},
-                {AutoField.LANE_X, AutoField.gardenShot()[1], 0},
-                AutoField.gardenShot()}, PARK_BY_SEC);
+            driveRoute("to the 1.2 m shot", AutoField.gardenShotRoute(), PARK_BY_SEC);
             shoot("shoot GARDEN POLLEN");
         } else if (plan() == Plan.SECOND_CELL_TIP) {
             setAutoAim(true);
@@ -149,11 +146,7 @@ public abstract class BiobuzzAuto extends LinearOpMode {
     }
 
     private void collectGarden() {
-        double[] start = AutoField.gardenStart();
-        driveRoute("to the GARDEN", new double[][] {
-            {AutoField.LANE_X, AutoField.startAtDownCell()[1], 0},
-            {AutoField.LANE_X, start[1] + 10, 180},
-            start}, PARK_BY_SEC);
+        driveRoute("to the GARDEN", AutoField.gardenRoute(), PARK_BY_SEC);
         intakePower = BiobuzzRobot.INTAKE_POWER;
         driveTo("collect GARDEN POLLEN", AutoField.gardenEnd(), false, PICKUP_POWER, PARK_BY_SEC);
         intakePower = 0;
@@ -164,8 +157,8 @@ public abstract class BiobuzzAuto extends LinearOpMode {
         spinRpm = 0;
         robot.turret.setManualTargetAngle(0); // TeleOp starts with the turret centred
         if (pose != null) {
-            double[] red = AutoField.toRed(new double[] {pose.x(), pose.y(), 0}, alliance);
-            driveRoute("park in the LOADING ZONE", AutoField.parkRoute(red[0], red[1]), AUTO_END_SEC);
+            double[] red = AutoField.toRed(new double[] {pose.x(), pose.y(), Math.toDegrees(pose.heading())}, alliance);
+            driveRoute("park in the LOADING ZONE", AutoField.parkRoute(red[0], red[1], red[2]), AUTO_END_SEC);
         }
         while (opModeIsActive()) {
             step = "done";
@@ -308,10 +301,13 @@ public abstract class BiobuzzAuto extends LinearOpMode {
 
     static String startHint(Plan plan, Alliance alliance) {
         boolean atUp = plan == Plan.HIVE_FRONT;
-        // Seen from behind our wall: the upward CELL is on the left (LOADING ZONE side).
-        return String.format("Start: back on our alliance wall, facing the HIVE, centred on the %s CELL "
-            + "(%s one seen from behind our wall, 34 cm from the middle line).",
-            atUp ? "UPWARD" : "DOWNWARD", atUp ? "LEFT, loading-zone side" : "RIGHT, garden side");
+        boolean blue = alliance == Alliance.BLUE;
+        // RED: Auto 1 in C1 (audience wall) below the upward CELL C3; Auto 2/3 in C6 (far wall) above C4.
+        // BLUE is the same turned around: D6 above D4, and D1 below D3.
+        boolean audienceWall = atUp != blue;
+        return String.format("Start: tile %s, back against the %s wall, facing the HIVE, lined up with the %s CELL %s.",
+            blue ? (atUp ? "D6" : "D1") : (atUp ? "C1" : "C6"), audienceWall ? "audience" : "far",
+            atUp ? "UPWARD" : "DOWNWARD", blue ? (atUp ? "D4" : "D3") : (atUp ? "C3" : "C4"));
     }
 
     /**
