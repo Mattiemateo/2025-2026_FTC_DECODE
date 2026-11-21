@@ -15,6 +15,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
  *         auto-aim OFF = hold for flywheel at DEFAULT_RPM
  * Cross/Circle: transfer forward/reverse (manual, e.g. to clear a jam)
  * D-pad up/down: FAR / AUDIENCE cell is tipped up (odometry aim only)
+ * D-pad left/right: shot speed trim -/+ ShotTable.RPM_TRIM_STEP (all shots, auto and manual)
  * Options: robot is back at its start spot, re-zero odometry there
  * Rumble: a short buzz when the shot turns READY (auto-aim ON, Square not held)
  * Share (tap): odometry off/on (line hold, goal memory, shot lead) - e.g. a pod got knocked loose
@@ -65,6 +66,7 @@ public class BIOBUZZ extends LinearOpMode {
         boolean lastL3 = false, lastR3 = false, shareConsumed = false;
         ElapsedTime shareHeld = new ElapsedTime();
         boolean lastShare = false;
+        boolean lastDpadLeft = false, lastDpadRight = false;
 
         try {
             while (opModeIsActive()) {
@@ -103,6 +105,10 @@ public class BIOBUZZ extends LinearOpMode {
                 if (gamepad1.dpad_up) cell = FieldAim.Cell.FAR;
                 if (gamepad1.dpad_down) cell = FieldAim.Cell.AUDIENCE;
                 if (gamepad1.options) resetPoseToStart();
+                if (gamepad1.dpad_left && !lastDpadLeft) ShotTable.RPM_TRIM -= ShotTable.RPM_TRIM_STEP;
+                if (gamepad1.dpad_right && !lastDpadRight) ShotTable.RPM_TRIM += ShotTable.RPM_TRIM_STEP;
+                lastDpadLeft = gamepad1.dpad_left;
+                lastDpadRight = gamepad1.dpad_right;
                 updateFieldAim(pose, cell);
 
                 if (gamepad1.triangle && !lastTriangle) autoAim = !autoAim;
@@ -131,13 +137,14 @@ public class BIOBUZZ extends LinearOpMode {
                         sinceReady.reset();
                     }
                 } else {
-                    robot.flywheel.setTargetRPM(gamepad1.square ? FlywheelController.DEFAULT_RPM : 0);
+                    robot.flywheel.setTargetRPM(gamepad1.square ? manualRpm() : 0);
                     robot.transfer.setPower(manualTransfer);
                 }
 
                 telemetry.addData("Auto-aim", autoAim ? "ON" : "OFF");
                 telemetry.addData("Flywheel RPM (target/measured)", "%.0f / %.0f",
                         robot.flywheel.getTargetRPM(), robot.flywheel.getCurrentRPM());
+                telemetry.addData("Shot speed trim", "%+.0f RPM   (D-pad left/right)", ShotTable.RPM_TRIM);
                 telemetry.addData("Battery", "%.1f V", robot.batteryVoltage());
                 telemetry.update();
             }
@@ -221,5 +228,10 @@ public class BIOBUZZ extends LinearOpMode {
                 (forward - strafe + turn) / denominator * scale,
                 (forward + strafe - turn) / denominator * scale
         };
+    }
+
+    /** Flywheel speed for manual shooting (auto-aim off), including the trim. */
+    static double manualRpm() {
+        return Math.max(0, FlywheelController.DEFAULT_RPM + ShotTable.RPM_TRIM);
     }
 }

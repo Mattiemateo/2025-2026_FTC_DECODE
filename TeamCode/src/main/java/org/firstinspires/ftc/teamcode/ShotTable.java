@@ -25,6 +25,11 @@ public final class ShotTable {
         {70.9, 2100.0, 0.51}, // 180 cm
         {82.7, 2150.0, 0.55}, // 210 cm
     };
+    // Shifts every shot speed (table and manual DEFAULT_RPM) up or down, e.g. -50 when balls
+    // bounce off the back wall of the CELL. Set with D-pad left/right in BIOBUZZ; kept until the
+    // robot app restarts. Once a value works, fold it into ROWS and set this back to 0.
+    public static double RPM_TRIM = 0.0;
+    public static double RPM_TRIM_STEP = 25.0;
     // How far beyond the first/last row auto-fire is still allowed.
     public static double INRANGE_MARGIN_IN = 6.0;
 
@@ -35,7 +40,7 @@ public final class ShotTable {
     }
 
     public static double rpm(double distanceIn) {
-        return interpolate(ROWS, RPM, distanceIn);
+        return interpolate(ROWS, RPM, distanceIn) + RPM_TRIM;
     }
 
     public static double flightTime(double distanceIn) {

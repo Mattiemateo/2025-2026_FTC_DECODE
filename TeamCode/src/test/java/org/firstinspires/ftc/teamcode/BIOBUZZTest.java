@@ -185,6 +185,18 @@ public class BIOBUZZTest {
     }
 
     @Test
+    public void rpmTrimShiftsTableAndManualShots() {
+        double table = ShotTable.rpm(50), manual = BIOBUZZ.manualRpm();
+        try {
+            ShotTable.RPM_TRIM = -50;
+            assertEquals(table - 50, ShotTable.rpm(50), 1e-9);
+            assertEquals(manual - 50, BIOBUZZ.manualRpm(), 1e-9);
+        } finally {
+            ShotTable.RPM_TRIM = 0;
+        }
+    }
+
+    @Test
     public void autoFireWaitsForEveryCheck() {
         double[] row = ShotTable.ROWS[0];
         double d = row[0], rpm = row[1];

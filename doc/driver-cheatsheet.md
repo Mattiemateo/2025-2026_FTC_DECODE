@@ -19,6 +19,7 @@ TeleOp **BIOBUZZ**, one PlayStation controller (gamepad 1). Keep this in sync wi
         L1 turret left                      R1 turret right
    Share: odometry / assists           Options: re-zero odometry
    D-pad up/down: which CELL is up     Triangle: auto-aim on/off
+   D-pad left/right: shot speed -/+
    Left stick: drive                   Square: shoot (hold)
    L3 (press): field-relative          Cross / Circle: transfer fwd / back
                                         Right stick X: turn
@@ -36,6 +37,7 @@ TeleOp **BIOBUZZ**, one PlayStation controller (gamepad 1). Keep this in sync wi
 | **Square, auto-aim OFF** | Hold to spin the flywheel at 1800 RPM, right for about 1 m from the goal (you feed with Cross) |
 | **Cross / Circle** | Transfer forward / backward, by hand (e.g. to clear a jam) |
 | **D-pad up / down** | The FAR / AUDIENCE CELL is tipped up (only for odometry aim) |
+| **D-pad left / right** | **Shot speed trim** -/+ 25 RPM for every shot (auto-aim and manual). Balls bounce out off the back wall? Go lower. Falling short? Go higher. Shown as `Shot speed trim`; kept until the robot is restarted |
 | **Options** | Robot is back on its start spot: re-zero odometry there (also forgets the remembered goal) |
 | **Share, tap** | **Odometry off/on**, e.g. if a pod gets knocked loose |
 | **Share, hold ~0.6 s** | **Driving assists off/on** |
