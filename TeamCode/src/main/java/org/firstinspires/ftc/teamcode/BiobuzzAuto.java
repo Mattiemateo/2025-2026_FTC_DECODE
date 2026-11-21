@@ -35,10 +35,10 @@ public abstract class BiobuzzAuto extends LinearOpMode {
     public static double VIA_TOLERANCE_IN = 4.0;
     public static double STEP_TIMEOUT_SEC = 5.0;
     public static double SETTLE_SEC = 0.15;
-    // Tip watch: the watched cluster this high above the camera means "that CELL is up". A down
-    // CELL's tags are about 21 in above the camera, an upward CELL's about 43 in.
-    public static double TIP_HEIGHT_IN = 32.0;
+    // Tip watch: from the start spot no alliance tag faces the camera until the HIVE tips. Any of
+    // our alliance's tags seen for TIP_CONFIRM_SEC (gaps up to TIP_GAP_SEC allowed) = tipped.
     public static double TIP_CONFIRM_SEC = 0.25;
+    public static double TIP_GAP_SEC = 0.3;
     // No odometry: leave by driving forward for this long.
     public static double BLIND_LEAVE_POWER = 0.3, BLIND_LEAVE_SEC = 0.5;
 
@@ -125,7 +125,6 @@ public abstract class BiobuzzAuto extends LinearOpMode {
     /** Turret on the downward CELL; true once it comes up, false at TIP_CUTOFF_SEC. */
     private boolean watchForTip() {
         setAutoAim(false);
-        int cluster = AutoField.startDownCluster(alliance);
         double[] cell = mine(AutoField.startDownCell());
         spinRpm = ShotTable.rpm(50); // spin up now, so the shot can go as soon as it tips
         TipWatch watch = new TipWatch();
@@ -136,11 +135,10 @@ public abstract class BiobuzzAuto extends LinearOpMode {
                     pose.x(), pose.y(), Math.toDegrees(pose.heading()), cell[0], cell[1]));
             }
             robot.drive(0, 0, 0, 0);
-            double height = robot.turret.clusterHeightAboveCameraIn(cluster);
-            telemetry.addData("Watched CELL height", Double.isNaN(height) ? "not seen"
-                : String.format("%.0f in above camera (tip at %.0f)", height, TIP_HEIGHT_IN));
+            java.util.List<Integer> tags = robot.turret.visibleAllianceTagIds();
+            telemetry.addData("Alliance tags seen", tags.isEmpty() ? "none (not tipped yet)" : tags.toString());
             tick();
-            if (watch.update(height, clock.seconds())) return true;
+            if (watch.update(!tags.isEmpty(), clock.seconds())) return true;
         }
         return false;
     }
@@ -311,21 +309,22 @@ public abstract class BiobuzzAuto extends LinearOpMode {
     }
 
     /**
-     * Tip detection from the watched cluster's height above the camera. Tipped once it has been
-     * above TIP_HEIGHT_IN for TIP_CONFIRM_SEC (first and latest high reading that far apart).
-     * Frames where it isn't seen (NaN) don't reset it; a low reading does.
+     * Tip detection: tipped once our alliance's tags have been seen for TIP_CONFIRM_SEC. A missed
+     * frame or two (up to TIP_GAP_SEC without tags) doesn't reset it; a longer gap does, so a
+     * single stray detection never counts.
      */
     static final class TipWatch {
-        private double highSince = Double.NaN;
+        private double seenSince = Double.NaN;
+        private double lastSeen = Double.NaN;
 
-        boolean update(double heightIn, double now) {
-            if (Double.isNaN(heightIn)) return false; // not seen this frame: wait for the next one
-            if (heightIn < TIP_HEIGHT_IN) {
-                highSince = Double.NaN;
+        boolean update(boolean tagsSeen, double now) {
+            if (!tagsSeen) {
+                if (!Double.isNaN(lastSeen) && now - lastSeen > TIP_GAP_SEC) seenSince = Double.NaN;
                 return false;
             }
-            if (Double.isNaN(highSince)) highSince = now;
-            return now - highSince >= TIP_CONFIRM_SEC;
+            if (Double.isNaN(seenSince)) seenSince = now;
+            lastSeen = now;
+            return now - seenSince >= TIP_CONFIRM_SEC;
         }
     }
 }

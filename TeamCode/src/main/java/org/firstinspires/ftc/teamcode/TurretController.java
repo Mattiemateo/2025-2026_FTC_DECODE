@@ -705,22 +705,22 @@ public class TurretController {
     }
 
     /**
-     * Height (in) of one tag cluster above the camera in the latest frame, or NaN when that
-     * cluster is not seen with 3D data. Cluster index as in ClusterFix. Used by autonomous to see
-     * a CELL tip up: an upward CELL's tags sit about 20 in higher than a downward CELL's.
+     * Our alliance's goal tags (IDs) in the latest camera frame, empty when none. Autonomous uses
+     * it to see the HIVE tip: the tags sit under a CELL and only face the camera once it is up.
      */
-    public double clusterHeightAboveCameraIn(int cluster) {
-        if (limelight == null) return Double.NaN;
-        ClusterFix fix = findCluster(limelight.getLatestResult(), cluster);
-        return fix == null || fix.horizontalIn <= 0 ? Double.NaN : fix.heightAboveCameraIn;
+    public List<Integer> visibleAllianceTagIds() {
+        List<Integer> ids = new java.util.ArrayList<>();
+        if (limelight == null) return ids;
+        LLResult result = limelight.getLatestResult();
+        if (result == null || !result.isValid() || result.getFiducialResults() == null) return ids;
+        for (LLResultTypes.FiducialResult f : result.getFiducialResults()) {
+            int cluster = clusterOf(f.getFiducialId());
+            if (cluster >= 0 && allianceOwnsCluster(cluster)) ids.add(f.getFiducialId());
+        }
+        return ids;
     }
 
     private ClusterFix findCluster(LLResult result) {
-        return findCluster(result, -1);
-    }
-
-    /** onlyCluster >= 0: look at that cluster only; otherwise our alliance's highest cluster. */
-    private ClusterFix findCluster(LLResult result, int onlyCluster) {
         if (result == null || !result.isValid()) return null;
         List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
         if (fiducials == null || fiducials.isEmpty()) return null;
@@ -729,7 +729,7 @@ public class TurretController {
         int bestCluster = -1;
         double bestTy = Double.NEGATIVE_INFINITY;
         for (int cluster = 0; cluster < 4; cluster++) {
-            if (onlyCluster >= 0 ? cluster != onlyCluster : !allianceOwnsCluster(cluster)) continue;
+            if (!allianceOwnsCluster(cluster)) continue;
             double tySum = 0;
             int count = 0;
             for (LLResultTypes.FiducialResult f : fiducials) {

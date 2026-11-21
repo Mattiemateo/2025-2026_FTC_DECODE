@@ -130,7 +130,7 @@ Three OpModes, picked by what our alliance partner can do. All: pick the allianc
 | **BIOBUZZ Auto 3: Second Cell Fallback PARK** | Same as 2 | Same as 2, but not tipped in time = just park |
 
 - **Field spots** are in `AutoField.java`, written for RED and mirrored for BLUE (the field is symmetric about its centre). Defaults come from the manual's drawings (TU10), with the start spots and start state (C3 up) from our field drawing: measure on a real field and adjust. The robot drives along `LANE_X` (x = -40 in. for RED, columns B) to keep clear of the HIVE legs and the GARDEN corner. Our partner may use the same lane: agree routes with them.
-- **Tip detection:** the turret points the camera at the downward CELL; `Watched CELL height` shows its tags' height above the camera. Up is about 43 in., down about 21 in.; above `TIP_HEIGHT_IN` (32) for 0.25 s counts as tipped. Check the numbers on the field.
+- **Tip detection:** the turret points the camera at the downward CELL. From the start spot none of our alliance's tags face the camera until the HIVE tips, so any of them in view for `TIP_CONFIRM_SEC` (0.25 s) counts as tipped. `Alliance tags seen` shows the IDs.
 - **Shooting:** no ball sensor, so it feeds for `FEED_SEC` (3 s) of READY time, with the intake helping (`INTAKE_WHILE_SHOOTING`).
 - **No odometry:** it leaves the wall by time; Auto 1 still shoots with the camera.
 - Tune `DRIVE_POWER` (0.5) and `PICKUP_POWER` (0.2) in `BiobuzzAuto` on the field. Untested on the robot so far.

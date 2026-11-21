@@ -118,18 +118,19 @@ public class BiobuzzAutoTest {
     }
 
     @Test
-    public void tipNeedsTheCellHighForAMoment() {
+    public void tipNeedsAllianceTagsInViewForAMoment() {
         BiobuzzAuto.TipWatch w = new BiobuzzAuto.TipWatch();
-        double high = BiobuzzAuto.TIP_HEIGHT_IN + 5, low = BiobuzzAuto.TIP_HEIGHT_IN - 10;
-        assertFalse(w.update(low, 0.0));
-        assertFalse(w.update(high, 1.0));
-        assertFalse(w.update(Double.NaN, 2.0)); // not seen: never tips on its own
-        assertTrue(w.update(high, 1.0 + BiobuzzAuto.TIP_CONFIRM_SEC)); // gap didn't reset it
+        double confirm = BiobuzzAuto.TIP_CONFIRM_SEC, gap = BiobuzzAuto.TIP_GAP_SEC;
+        assertFalse(w.update(false, 0.0));
+        assertFalse(w.update(true, 1.0)); // first sighting
+        assertFalse(w.update(false, 1.0 + gap / 2)); // a missed frame
+        assertTrue(w.update(true, 1.0 + confirm)); // still counts from the first sighting
         BiobuzzAuto.TipWatch w2 = new BiobuzzAuto.TipWatch();
-        assertFalse(w2.update(high, 0.0));
-        assertFalse(w2.update(low, 0.1)); // a low reading resets
-        assertFalse(w2.update(high, 0.2));
-        assertFalse(w2.update(high, 0.2 + BiobuzzAuto.TIP_CONFIRM_SEC / 2));
+        assertFalse(w2.update(true, 0.0)); // a stray detection...
+        assertFalse(w2.update(false, gap + 0.1)); // ...then nothing for longer than the gap
+        assertFalse(w2.update(true, gap + 0.2)); // starts over
+        assertFalse(w2.update(true, gap + 0.2 + confirm / 2));
+        assertTrue(w2.update(true, gap + 0.2 + confirm));
     }
 
     @Test
