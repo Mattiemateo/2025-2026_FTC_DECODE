@@ -12,6 +12,16 @@ TeleOp **BIOBUZZ**, one PlayStation controller (gamepad 1). Keep this in sync wi
 4. Pick the alliance: **Circle = RED, Cross = BLUE**. Check the `Alliance` line.
 5. Press **Start**.
 
+## Autonomous: which one?
+
+| Situation | Run | We start at |
+|---|---|---|
+| We take the upward CELL (partner can't tip, or starts elsewhere) | **Auto 1: Hive Front** | the **upward** CELL |
+| Partner tips from the upward CELL; if it fails, we tip it ourselves | **Auto 2: Second Cell Fallback TIP** | the **downward** CELL |
+| Partner tips from the upward CELL; if it fails, we just park | **Auto 3: Second Cell Fallback PARK** | the **downward** CELL |
+
+At the start RED's upward CELL is the **audience** one, BLUE's the **far** one. Back of the robot on our alliance wall, facing the HIVE, centred on that CELL; INIT shows it. Pick the alliance, preload 4 POLLEN. The TeleOp then continues from where autonomous ended.
+
 ## Controls
 
 ```

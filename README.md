@@ -119,6 +119,22 @@ Install **TeamCode normally once** after this dependency/controller update. Then
 
 [Official Sloth installation and hot reload instructions](https://github.com/Dairy-Foundation/Sloth)
 
+## Autonomous
+
+Three OpModes, picked by what our alliance partner can do. All: pick the alliance in INIT (Circle = RED, Cross = BLUE), preload 4 POLLEN, and start with the robot's back on our alliance wall, facing the HIVE, centred on a CELL (34 cm from the field's middle line). INIT telemetry says which CELL. They drive on odometry only (point to point, `BiobuzzAuto` / `AutoField`), shoot with the TeleOp's auto-aim and READY checks, stop scoring at `PARK_BY_SEC` (24 s) and then park, and hand the final pose to the TeleOp (which then keeps it; Options still re-zeros at the start spot).
+
+| OpMode | Start | What it does |
+|---|---|---|
+| **BIOBUZZ Auto 1: Hive Front** | At the **upward** CELL (RED: audience side, BLUE: far side) | Auto-aim finds the CELL, leave the wall (4 in.), shoot the preloads, park in the LOADING ZONE |
+| **BIOBUZZ Auto 2: Second Cell Fallback TIP** | At the **downward** CELL; partner at the upward one | Watch the downward CELL. When the partner tips the HIVE it comes up: shoot the preloads into it, drive along the audience wall (RED; BLUE: far wall) intake first to collect the 4 GARDEN POLLEN, shoot them from 1.2 m next to the LOADING ZONE, park. Not tipped within `TIP_CUTOFF_SEC` (9 s): drive down the lane and shoot the preloads diagonally from 1.2 m (audience side) into the original upward CELL, then park |
+| **BIOBUZZ Auto 3: Second Cell Fallback PARK** | Same as 2 | Same as 2, but not tipped in time = just park |
+
+- **Field spots** are in `AutoField.java`, written for RED and mirrored for BLUE (the field is symmetric about its centre). Defaults come from the manual's drawings (TU10): measure on a real field and adjust. The robot drives along `LANE_X` (x = -40 in. for RED) to keep clear of the partner's start spot and the HIVE legs.
+- **Tip detection:** the turret points the camera at the downward CELL; `Watched CELL height` shows its tags' height above the camera. Up is about 43 in., down about 21 in.; above `TIP_HEIGHT_IN` (32) for 0.25 s counts as tipped. Check the numbers on the field.
+- **Shooting:** no ball sensor, so it feeds for `FEED_SEC` (3 s) of READY time, with the intake helping (`INTAKE_WHILE_SHOOTING`).
+- **No odometry:** it leaves the wall by time; Auto 1 still shoots with the camera.
+- Tune `DRIVE_POWER` (0.5) and `PICKUP_POWER` (0.2) in `BiobuzzAuto` on the field. Untested on the robot so far.
+
 ## Pedro AutoTune
 
 AutoTune runs from a web page, not from the Driver Station OpMode list. Install TeamCode normally (not only Sloth Load), restart the robot, connect your laptop to the robot's Wi-Fi, and open **http://192.168.43.1:10158** (use the robot's actual IP if different). Its procedures are registered in `teamcode/pedro/Tuning.java`; each step runs on the robot and you press Stop on the Driver Station when the page says so.

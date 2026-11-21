@@ -704,7 +704,23 @@ public class TurretController {
         }
     }
 
+    /**
+     * Height (in) of one tag cluster above the camera in the latest frame, or NaN when that
+     * cluster is not seen with 3D data. Cluster index as in ClusterFix. Used by autonomous to see
+     * a CELL tip up: an upward CELL's tags sit about 20 in higher than a downward CELL's.
+     */
+    public double clusterHeightAboveCameraIn(int cluster) {
+        if (limelight == null) return Double.NaN;
+        ClusterFix fix = findCluster(limelight.getLatestResult(), cluster);
+        return fix == null || fix.horizontalIn <= 0 ? Double.NaN : fix.heightAboveCameraIn;
+    }
+
     private ClusterFix findCluster(LLResult result) {
+        return findCluster(result, -1);
+    }
+
+    /** onlyCluster >= 0: look at that cluster only; otherwise our alliance's highest cluster. */
+    private ClusterFix findCluster(LLResult result, int onlyCluster) {
         if (result == null || !result.isValid()) return null;
         List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
         if (fiducials == null || fiducials.isEmpty()) return null;
@@ -713,7 +729,7 @@ public class TurretController {
         int bestCluster = -1;
         double bestTy = Double.NEGATIVE_INFINITY;
         for (int cluster = 0; cluster < 4; cluster++) {
-            if (!allianceOwnsCluster(cluster)) continue;
+            if (onlyCluster >= 0 ? cluster != onlyCluster : !allianceOwnsCluster(cluster)) continue;
             double tySum = 0;
             int count = 0;
             for (LLResultTypes.FiducialResult f : fiducials) {

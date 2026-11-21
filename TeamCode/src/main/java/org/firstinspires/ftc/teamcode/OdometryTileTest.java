@@ -151,6 +151,12 @@ public class OdometryTileTest extends LinearOpMode {
      * Field frame: +x forward at the start, +y left, heading counter-clockwise in degrees.
      */
     static double[] driveCommand(double x, double y, double headingDeg, double tx, double ty, double th) {
+        return driveCommand(x, y, headingDeg, tx, ty, th, MAX_POWER);
+    }
+
+    /** Same, with a different top speed (also used by the autonomous OpModes). */
+    static double[] driveCommand(double x, double y, double headingDeg, double tx, double ty, double th,
+                                 double maxPower) {
         double h = Math.toRadians(headingDeg);
         double ex = tx - x, ey = ty - y;
         double forwardErr = ex * Math.cos(h) + ey * Math.sin(h);
@@ -161,20 +167,20 @@ public class OdometryTileTest extends LinearOpMode {
         double left = KP_DRIVE * leftErr;
         double translation = Math.hypot(forward, left);
         double distance = Math.hypot(forwardErr, leftErr);
-        if (translation > MAX_POWER) {
-            forward *= MAX_POWER / translation;
-            left *= MAX_POWER / translation;
+        if (translation > maxPower) {
+            forward *= maxPower / translation;
+            left *= maxPower / translation;
         } else if (distance > POSITION_TOLERANCE_IN && translation > 0 && translation < MIN_POWER) {
             forward *= MIN_POWER / translation;
             left *= MIN_POWER / translation;
         }
-        double turnCcw = clampWithMin(KP_TURN * headingErr, Math.abs(headingErr) > HEADING_TOLERANCE_DEG);
+        double turnCcw = clampWithMin(KP_TURN * headingErr, Math.abs(headingErr) > HEADING_TOLERANCE_DEG, maxPower);
         // drivePowers: strafe positive = right, turn positive = clockwise.
         return new double[] {forward, -left, -turnCcw};
     }
 
-    private static double clampWithMin(double power, boolean needsMovement) {
-        double magnitude = Math.min(Math.abs(power), MAX_POWER);
+    private static double clampWithMin(double power, boolean needsMovement, double maxPower) {
+        double magnitude = Math.min(Math.abs(power), maxPower);
         if (needsMovement) magnitude = Math.max(magnitude, MIN_POWER);
         return Math.copySign(magnitude, power);
     }

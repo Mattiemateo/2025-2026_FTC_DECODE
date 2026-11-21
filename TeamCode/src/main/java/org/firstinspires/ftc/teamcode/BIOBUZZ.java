@@ -52,6 +52,9 @@ public class BIOBUZZ extends LinearOpMode {
                 telemetry.addLine("Start: back against our alliance wall, centred, facing the HIVE.");
             }
             if (robot.localizer == null) telemetry.addData("Odometry OFF", robot.odometryError);
+            if (BiobuzzAuto.hasHandoff()) {
+                telemetry.addLine("Odometry: continuing from where autonomous ended (Options re-zeros at the start spot).");
+            }
             telemetry.addLine("Bumpers: turret | Triangle: auto-aim | Square: shoot / flywheel");
             telemetry.update();
             idle();
@@ -61,8 +64,10 @@ public class BIOBUZZ extends LinearOpMode {
         boolean lastTriangle = false;
         double spinRpm = FlywheelController.DEFAULT_RPM;
         FieldAim.Cell cell = FieldAim.Cell.FAR;
-        resetPoseToStart();
-        assist.setFieldReference(robot.turret.imuHeadingDeg()); // robot starts facing away from the drivers
+        if (!restoreAutoPose()) {
+            resetPoseToStart();
+            assist.setFieldReference(robot.turret.imuHeadingDeg()); // robot starts facing away from the drivers
+        }
         boolean lastL3 = false, lastR3 = false, shareConsumed = false;
         ElapsedTime shareHeld = new ElapsedTime();
         boolean lastShare = false;
@@ -191,6 +196,25 @@ public class BIOBUZZ extends LinearOpMode {
             robot.localizer = null;
             robot.odometryError = e.getMessage();
         }
+    }
+
+    /**
+     * Right after an autonomous: keep its odometry pose, and work out "away from the drivers" from
+     * the robot's heading (it may not face the HIVE any more). False when there is nothing to keep.
+     */
+    private boolean restoreAutoPose() {
+        double[] p = BiobuzzAuto.takeHandoff();
+        if (p == null || robot.localizer == null || !hasAlliance()) return false;
+        try {
+            robot.localizer.setPose(new Pose(p[0], p[1], Math.toRadians(p[2])));
+        } catch (RuntimeException e) {
+            robot.localizer = null;
+            robot.odometryError = e.getMessage();
+            return false;
+        }
+        double awayHeading = FieldAim.startPose(TurretController.ALLIANCE)[2];
+        assist.setFieldReference(robot.turret.imuHeadingDeg() - TurretController.wrap180(p[2] - awayHeading));
+        return true;
     }
 
     /** Hand the turret the angle to our upward CELL (only used when AIM_SOURCE = ODOMETRY). */
