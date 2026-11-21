@@ -42,7 +42,7 @@ The alliance sets the odometry start spot and which HIVE auto-aim targets. Witho
 | Right / left trigger | Intake in / out (60% maximum) |
 | Hold Cross / Circle | Transfer forward / reverse (90%) |
 | Hold Square, auto-aim ON | **Shoot:** the transfer feeds only while the turret is on target (2°), the **measured** flywheel speed is within 3% of the shot-table RPM (with a low battery the real speed can lag the target), the goal was seen in the last 0.2 s, the distance is inside the shot table, and the goal is not behind the turret's blind spot. The aim check follows the turret's real path, so it does not fire while the turret swings the long way round. Telemetry `Shot` shows READY or what it waits for. |
-| Hold Square, auto-aim OFF | Flywheel at `DEFAULT_RPM` (2000); release to coast |
+| Hold Square, auto-aim OFF | Flywheel at `DEFAULT_RPM` (1800, right for about 1 m); release to coast |
 | Hold Right / Left bumper | Turn turret (80°/s, encoder speed control); release to hold position |
 | Triangle | Toggle auto-aim on/off (starts off; bumpers are ignored while it is on). While on, the flywheel pre-spins to the RPM for the current distance. |
 | D-pad up / down | The FAR / AUDIENCE cell of our HIVE is tipped up (auto-aim target) |
@@ -95,7 +95,7 @@ Auto-aim tracks the robot pose with Pedro's two-pod + IMU localizer and points t
 | `POSITION_P` (5) | `TurretController` | Turret hold stiffness; raise if floppy, lower if it shakes |
 | `MANUAL_SPEED_DEG_PER_SEC` (80) | `TurretController` | Bumper turret speed |
 | `AIM_MAX_POWER` (0.8), `GYRO_LEAD_SEC` (0.05) | `TurretController` | Auto-aim speed and turn-rate lead |
-| `DEFAULT_RPM` (2000), `GEAR_RATIO` (2.0) | `FlywheelController` | Flywheel speed; all RPM values (also `ShotTable`) are flywheel RPM. The flywheel is geared up 2:1 from its motor (since 2026-11-08); `GEAR_RATIO` converts to motor encoder ticks. Retune `FLYWHEEL_P`/`F` if it struggles to hold speed. |
+| `DEFAULT_RPM` (1800), `GEAR_RATIO` (2.0) | `FlywheelController` | Flywheel speed; all RPM values (also `ShotTable`) are flywheel RPM. The flywheel is geared up 2:1 from its motor (since 2026-11-08); `GEAR_RATIO` converts to motor encoder ticks. Retune `FLYWHEEL_P`/`F` if it struggles to hold speed. |
 | `DRIVE_SCALE` / `INTAKE_POWER`, `TRANSFER_POWER` | `BIOBUZZ` / `BiobuzzRobot` | Drive and mechanism power |
 | `AIM_TOLERANCE_DEG` (2), `RPM_TOLERANCE` (0.03), `MAX_TARGET_AGE_SEC` (0.2) | `BIOBUZZ` | Auto-fire checks |
 | `ShotTable.ROWS`, `CAMERA_PITCH_DEG` (35), `LEAD_GAIN` (1.0) | `ShotTable` / `TurretController` | Shot speed per distance, camera tilt, moving-shot lead |

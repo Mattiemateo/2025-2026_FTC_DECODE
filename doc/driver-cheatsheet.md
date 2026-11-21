@@ -33,7 +33,7 @@ TeleOp **BIOBUZZ**, one PlayStation controller (gamepad 1). Keep this in sync wi
 | **Triangle** | Auto-aim **on/off** (starts OFF) |
 | **R1 / L1** | Turn the turret right / left by hand (only while auto-aim is off) |
 | **Square, auto-aim ON** | **Hold to shoot.** Balls feed only while the shot is READY (see below) |
-| **Square, auto-aim OFF** | Hold to spin the flywheel at 2000 RPM (you feed with Cross) |
+| **Square, auto-aim OFF** | Hold to spin the flywheel at 1800 RPM, right for about 1 m from the goal (you feed with Cross) |
 | **Cross / Circle** | Transfer forward / backward, by hand (e.g. to clear a jam) |
 | **D-pad up / down** | The FAR / AUDIENCE CELL is tipped up (only for odometry aim) |
 | **Options** | Robot is back on its start spot: re-zero odometry there (also forgets the remembered goal) |
