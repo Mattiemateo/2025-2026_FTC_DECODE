@@ -19,7 +19,7 @@ The driver cheat sheet, [`doc/driver-cheatsheet.md`](../doc/driver-cheatsheet.md
 | --- | --- | --- |
 | Left stick | Drive / strafe (80%), with the driving assists | W A S D |
 | Right stick X | Turn | ← → |
-| L3 (press) | Field-relative driving on/off: stick forward = away from the drivers | G |
+| L3 (press) | Field-relative driving on/off: stick forward = away from the drivers. The HUD shows FIELD-/ROBOT-RELATIVE, and a blue arrow at the robot points where "stick forward" goes | G |
 | R3 (press) | "Away from the drivers" = the way the robot faces now | H |
 | R2 / L2 | Intake in / out (60%) | I / K |
 | R1 / L1 | Turret clockwise / counter-clockwise (80°/s, 30°/s near a limit; ignored while auto-aim is on) | E / Q |
@@ -33,6 +33,8 @@ The driver cheat sheet, [`doc/driver-cheatsheet.md`](../doc/driver-cheatsheet.md
 | Share, hold 0.6 s | Driving assists off/on | V (hold) |
 | (rumble) | A 200 ms buzz when the shot turns READY with auto-aim on and Square not held, as on the robot. The HUD's READY badge pulses too, in case the browser can't rumble the controller. | |
 | Touchpad | Start / stop the match (simulator only) | Enter |
+
+**Controller check:** while you hold buttons, the controller line in the side panel lists the button numbers the browser reports. L3 must show as 10 and R3 as 11. If they don't, the browser isn't using the standard layout: use Chrome.
 
 **Driving assists** (ported from `DriveAssist.java`, on by default):
 - **Straight zone:** within 8° of pure forward/back or left/right, the stick snaps straight.

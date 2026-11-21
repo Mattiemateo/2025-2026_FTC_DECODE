@@ -592,7 +592,7 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
 
-let padIndex = null, padNonStandard = false;
+let padIndex = null, padNonStandard = false, padPressed = [];
 addEventListener('gamepadconnected', e => { if (padIndex === null) padIndex = e.gamepad.index; });
 addEventListener('gamepaddisconnected', e => { if (padIndex === e.gamepad.index) padIndex = null; });
 
@@ -610,6 +610,7 @@ function readGamepad() {
   if (!pad) for (const p of pads) if (p && p.connected) { pad = p; padIndex = p.index; break; }
   if (pad) {
     padNonStandard = pad.mapping !== 'standard';
+    padPressed = pad.buttons.map((b, i) => b && b.pressed ? i : -1).filter(i => i >= 0);
     const ax = i => { const v = pad.axes[i] || 0; return Math.abs(v) < 0.06 ? 0 : v; };
     const bt = i => !!(pad.buttons[i] && pad.buttons[i].pressed);
     const bv = i => pad.buttons[i] ? pad.buttons[i].value : 0;
@@ -660,6 +661,7 @@ function initLoop(gp) {
   S.telemetry = tl;
 }
 
+function modeBanner(text) { S.banner = { text, t: S.now }; beep(700, 0.05); }
 const imuHeading = () => wrap180(S.robot.h); // the gyro is the robot's true heading here
 const imuRate = () => S.robot.w;
 
@@ -669,11 +671,17 @@ function opModeLoop(gp, dt) {
   const A = S.assist;
   // Share: tap = odometry off/on, hold = driving assists off/on.
   if (gp.share && !S.lastShareBtn) { S.shareDownAt = S.now; S.shareConsumed = false; }
-  if (gp.share && !S.shareConsumed && S.now - S.shareDownAt >= BIOBUZZ.SHARE_HOLD_SEC) { A.assistsOn = !A.assistsOn; S.shareConsumed = true; }
-  if (!gp.share && S.lastShareBtn && !S.shareConsumed) { S.odometryEnabled = !S.odometryEnabled; forgetGoal(); }
+  if (gp.share && !S.shareConsumed && S.now - S.shareDownAt >= BIOBUZZ.SHARE_HOLD_SEC) { A.assistsOn = !A.assistsOn; S.shareConsumed = true; modeBanner(A.assistsOn ? 'Driving assists ON' : 'Driving assists OFF: plain driving'); }
+  if (!gp.share && S.lastShareBtn && !S.shareConsumed) { S.odometryEnabled = !S.odometryEnabled; forgetGoal(); modeBanner(S.odometryEnabled ? 'Odometry ON' : 'Odometry OFF: camera-only aim, no line hold'); }
   S.lastShareBtn = gp.share;
-  if (gp.left_stick_button && !S.lastL3) A.fieldRelative = !A.fieldRelative;
-  if (gp.right_stick_button && !S.lastR3) assistSetFieldReference(A, imuHeading());
+  if (gp.left_stick_button && !S.lastL3) {
+    A.fieldRelative = !A.fieldRelative;
+    modeBanner(A.fieldRelative ? 'FIELD-relative: stick forward = away from the drivers' : 'ROBOT-relative: stick forward = robot front');
+  }
+  if (gp.right_stick_button && !S.lastR3) {
+    assistSetFieldReference(A, imuHeading());
+    modeBanner('"Away from the drivers" = robot heading now');
+  }
   S.lastL3 = gp.left_stick_button; S.lastR3 = gp.right_stick_button;
 
   const pose = updateOdometry();
@@ -1680,6 +1688,13 @@ function drawRobot(helpers) {
   ctx.fillStyle = spin > 0.05 ? `rgb(${80 + 175 * Math.min(1, spin)},${170},${60})` : '#5d636e';
   ctx.fillRect(1, -1.6, 9, 3.2);
   ctx.restore();
+  // Field-relative: arrow for "stick forward" (away from the drivers)
+  if (S.phase === 'running' && S.assist.fieldRelative) {
+    const a = S.assist.fieldReferenceDeg * D2R, ax = Math.cos(a), ay = Math.sin(a), px = -ay, py = ax;
+    const x0 = R.x + ax * 12, y0 = R.y + ay * 12, x1 = R.x + ax * 20, y1 = R.y + ay * 20;
+    ctx.strokeStyle = '#4cc9f0'; ctx.lineWidth = 1.2; line(x0, y0, x1, y1);
+    line(x1, y1, x1 - ax * 3 + px * 2.5, y1 - ay * 3 + py * 2.5); line(x1, y1, x1 - ax * 3 - px * 2.5, y1 - ay * 3 - py * 2.5);
+  }
   // Heading tick
   ctx.save(); ctx.translate(R.x, R.y); ctx.rotate(R.h * D2R);
   ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.6; line(9.6, -3, 11.5, 0); line(11.5, 0, 9.6, 3);
@@ -1699,6 +1714,13 @@ function drawHud() {
   ctx.fillText(timeText, 16, 12);
   ctx.font = '600 13px system-ui'; ctx.fillStyle = '#8b92a1';
   ctx.fillText(S.phase === 'init' ? 'INIT' : S.phase === 'ended' ? 'MATCH OVER' : len ? 'TELEOP' : 'FREE PRACTICE', 16, 42);
+  if (S.phase === 'running') {
+    const A = S.assist;
+    ctx.font = '700 12px system-ui'; ctx.fillStyle = A.fieldRelative ? '#4cc9f0' : '#e7e9ee';
+    ctx.fillText(A.fieldRelative ? 'FIELD-RELATIVE (L3)' : 'ROBOT-RELATIVE (L3)', 16, 62);
+    ctx.font = '600 11px system-ui'; ctx.fillStyle = '#8b92a1';
+    ctx.fillText(`assists ${A.assistsOn ? 'on' : 'OFF'} · odometry ${S.odometryEnabled ? 'on' : 'OFF'}`, 16, 78);
+  }
   const pts = S.phase === 'ended' ? S.final : points();
   ctx.textAlign = 'right'; ctx.font = '700 26px system-ui'; ctx.fillStyle = COLORS[S.alliance];
   ctx.fillText(String(pts.total), W - 16, 12);
@@ -1715,7 +1737,7 @@ function drawHud() {
   if (S.phase === 'running') {
     const y = Math.min(H - 40, view.cy + 80 * view.s + 46);
     ctx.textAlign = 'center'; ctx.font = '600 14px system-ui';
-    const status = S.autoAim ? (S.shotStatus || '') : 'Auto-aim OFF · Square = flywheel 2000 RPM · Cross = feed';
+    const status = S.autoAim ? (S.shotStatus || '') : `Auto-aim OFF · Square = flywheel ${manualRpm().toFixed(0)} RPM · Cross = feed`;
     const ready = S.shotStatus === 'READY';
     const tw = ctx.measureText(status).width + 24;
     ctx.fillStyle = ready ? 'rgba(48,164,108,.9)' : 'rgba(23,26,33,.85)';
@@ -1803,7 +1825,8 @@ function updatePanel(g, pad) {
   const dot = document.getElementById('padDot'), txt = document.getElementById('padText');
   if (pad) {
     dot.classList.add('on');
-    txt.textContent = (pad.id.replace(/\s*\(.*\)\s*/g, ' ').trim() || 'Controller') + (padNonStandard ? ' (non-standard mapping: use Chrome if buttons are wrong)' : '');
+    txt.textContent = (pad.id.replace(/\s*\(.*\)\s*/g, ' ').trim() || 'Controller') + (padNonStandard ? ' (non-standard mapping: use Chrome if buttons are wrong)' : '')
+      + (padPressed.length ? ` · buttons ${padPressed.join(', ')} (L3 = 10, R3 = 11)` : '');
   } else { dot.classList.remove('on'); txt.textContent = 'No controller: connect a PS controller and press any button. Keyboard works too.'; }
 
   document.getElementById('telemetry').textContent = S.telemetry.join('\n');
