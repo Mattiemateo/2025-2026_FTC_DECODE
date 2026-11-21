@@ -15,7 +15,7 @@ import org.firstinspires.ftc.teamcode.TurretController.Alliance;
  *   SECOND_CELL_TIP: start at the downward CELL and watch it. When our partner tips the HIVE (that
  *     CELL comes up), shoot the preloads into it, collect the 4 GARDEN POLLEN, shoot them from 1.2 m
  *     and park. Not tipped within TIP_CUTOFF_SEC: shoot the preloads into the original upward CELL
- *     from 1.2 m (diagonally, from the audience side), then park.
+ *     from 1.2 m (drive under the HIVE, then right, shoot diagonally), then park.
  *   SECOND_CELL_PARK: the same, but not tipped in time = just park.
  */
 public abstract class BiobuzzAuto extends LinearOpMode {
@@ -120,11 +120,7 @@ public abstract class BiobuzzAuto extends LinearOpMode {
             shoot("shoot GARDEN POLLEN");
         } else if (plan() == Plan.SECOND_CELL_TIP) {
             setAutoAim(true);
-            double[] spot = AutoField.fallbackShot();
-            driveRoute("fallback: to 1.2 m diagonal shot", new double[][] {
-                {AutoField.LANE_X, AutoField.startAtDownCell()[1], 0},
-                {AutoField.LANE_X, spot[1], 0},
-                spot}, PARK_BY_SEC);
+            driveRoute("fallback: under the HIVE to the 1.2 m shot", AutoField.fallbackRoute(), PARK_BY_SEC);
             shoot("fallback: shoot preloads");
         }
     }
@@ -312,11 +308,10 @@ public abstract class BiobuzzAuto extends LinearOpMode {
 
     static String startHint(Plan plan, Alliance alliance) {
         boolean atUp = plan == Plan.HIVE_FRONT;
-        // RED: upward CELL at the start is the audience one. BLUE: the far one.
-        boolean audienceSide = (alliance != Alliance.BLUE) == atUp;
+        // Seen from behind our wall: the upward CELL is on the left (LOADING ZONE side).
         return String.format("Start: back on our alliance wall, facing the HIVE, centred on the %s CELL "
-            + "(34 cm from the middle line toward the %s wall).",
-            atUp ? "UPWARD" : "DOWNWARD", audienceSide ? "audience" : "far");
+            + "(%s one seen from behind our wall, 34 cm from the middle line).",
+            atUp ? "UPWARD" : "DOWNWARD", atUp ? "LEFT, loading-zone side" : "RIGHT, garden side");
     }
 
     /**

@@ -10,8 +10,10 @@ import org.firstinspires.ftc.teamcode.TurretController.Alliance;
  * the blue wall). BLUE's field is RED's turned 180 degrees about the centre, so forAlliance()
  * mirrors every spot. Change the numbers here after measuring on the field.
  *
- * RED's field (Fig 9-3, 10-2):
- *   - At the start the AUDIENCE CELL of the HIVE is up and the FAR CELL is down.
+ * RED's field (Fig 9-3; start state checked on the team's field 2026-11-21):
+ *   - Seen from behind our alliance wall: LOADING ZONE on the left, GARDEN in the right corner.
+ *   - At the start our LEFT CELL is up (FAR, next to the LOADING ZONE) and the right one
+ *     (AUDIENCE, near the GARDEN) is down.
  *   - LOADING ZONE: x -72..-61, y +24..+48 (against our alliance wall, far end).
  *   - GARDEN: 4 POLLEN in a row along the audience wall from our corner, x -71..-62, y about -70.6.
  */
@@ -28,8 +30,10 @@ public final class AutoField {
     public static double GARDEN_WALL_GAP_IN = 1.0; // gap between the robot's side and the wall
     // 1.2 m shots. Bearing = direction from the CELL to the robot, degrees counter-clockwise.
     public static double SHOT_DISTANCE_IN = 47.2;
-    public static double GARDEN_SHOT_BEARING_DEG = 160.0; // toward the LOADING ZONE: shoot, then park
-    public static double FALLBACK_SHOT_BEARING_DEG = 240.0; // diagonal, audience side of the HIVE
+    public static double GARDEN_SHOT_BEARING_DEG = 200.0; // from the AUDIENCE CELL toward our GARDEN corner
+    // Fallback: drive straight under the HIVE (the robot fits), then right, and shoot diagonally up
+    // into the FAR CELL from the audience side. 260 deg keeps the robot on our half (x < 0, G402).
+    public static double FALLBACK_SHOT_BEARING_DEG = 260.0;
 
     // Tag clusters (TurretController.ClusterFix): 0 red far, 1 red audience, 2 blue audience, 3 blue far.
     static final double HALF_FIELD = 72.0;
@@ -53,22 +57,22 @@ public final class AutoField {
         return -(HALF_FIELD - FieldAim.ROBOT_HALF_LENGTH);
     }
 
-    /** CELL that is up at the start (RED: audience). {x, y}. */
+    /** CELL that is up at the start: our left one, next to the LOADING ZONE (RED: far). {x, y}. */
     static double[] startUpCell() {
-        return new double[] {-FieldAim.HIVE_X, -FieldAim.CELL_Y};
-    }
-
-    /** CELL that is down at the start (RED: far). {x, y}. */
-    static double[] startDownCell() {
         return new double[] {-FieldAim.HIVE_X, FieldAim.CELL_Y};
     }
 
+    /** CELL that is down at the start: our right one, near the GARDEN (RED: audience). {x, y}. */
+    static double[] startDownCell() {
+        return new double[] {-FieldAim.HIVE_X, -FieldAim.CELL_Y};
+    }
+
     static int startUpCluster(Alliance alliance) {
-        return alliance == Alliance.BLUE ? 3 : 1;
+        return alliance == Alliance.BLUE ? 2 : 0;
     }
 
     static int startDownCluster(Alliance alliance) {
-        return alliance == Alliance.BLUE ? 2 : 0;
+        return alliance == Alliance.BLUE ? 3 : 1;
     }
 
     /** Op mode 1: back on the alliance wall, facing the HIVE, lined up with the upward CELL. */
@@ -109,7 +113,7 @@ public final class AutoField {
         return new double[] {cell[0] + SHOT_DISTANCE_IN * Math.cos(b), cell[1] + SHOT_DISTANCE_IN * Math.sin(b), 0};
     }
 
-    /** After the GARDEN: shoot into the CELL that was down at the start (it was tipped up). */
+    /** After the GARDEN: shoot into the CELL that was down at the start (it was tipped up), from near the GARDEN. */
     static double[] gardenShot() {
         return shotSpot(startDownCell(), GARDEN_SHOT_BEARING_DEG);
     }
@@ -117,6 +121,12 @@ public final class AutoField {
     /** Fallback: shoot the preloads into the CELL that was up at the start. */
     static double[] fallbackShot() {
         return shotSpot(startUpCell(), FALLBACK_SHOT_BEARING_DEG);
+    }
+
+    /** Fallback route from the downward-CELL start: forward under the HIVE, then right to the shot. */
+    static double[][] fallbackRoute() {
+        double[] spot = fallbackShot();
+        return new double[][] {{spot[0], startAtDownCell()[1], 0}, spot};
     }
 
     /**

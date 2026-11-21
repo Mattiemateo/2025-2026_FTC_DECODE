@@ -125,11 +125,11 @@ Three OpModes, picked by what our alliance partner can do. All: pick the allianc
 
 | OpMode | Start | What it does |
 |---|---|---|
-| **BIOBUZZ Auto 1: Hive Front** | At the **upward** CELL (RED: audience side, BLUE: far side) | Auto-aim finds the CELL, leave the wall (4 in.), shoot the preloads, park in the LOADING ZONE |
-| **BIOBUZZ Auto 2: Second Cell Fallback TIP** | At the **downward** CELL; partner at the upward one | Watch the downward CELL. When the partner tips the HIVE it comes up: shoot the preloads into it, drive along the audience wall (RED; BLUE: far wall) intake first to collect the 4 GARDEN POLLEN, shoot them from 1.2 m next to the LOADING ZONE, park. Not tipped within `TIP_CUTOFF_SEC` (9 s): drive down the lane and shoot the preloads diagonally from 1.2 m (audience side) into the original upward CELL, then park |
+| **BIOBUZZ Auto 1: Hive Front** | At the **upward** CELL: the left one seen from behind our wall, loading-zone side (RED: far, BLUE: audience) | Auto-aim finds the CELL, leave the wall (4 in.), shoot the preloads, park in the LOADING ZONE |
+| **BIOBUZZ Auto 2: Second Cell Fallback TIP** | At the **downward** CELL (right one, garden side); partner at the upward one | Watch the downward CELL. When the partner tips the HIVE it comes up: shoot the preloads into it, drive along the audience wall (RED; BLUE: far wall) intake first to collect the 4 GARDEN POLLEN, shoot them from 1.2 m near the GARDEN, park. Not tipped within `TIP_CUTOFF_SEC` (9 s): drive straight under the HIVE, then right, and shoot the preloads diagonally from 1.2 m into the original upward CELL, then park |
 | **BIOBUZZ Auto 3: Second Cell Fallback PARK** | Same as 2 | Same as 2, but not tipped in time = just park |
 
-- **Field spots** are in `AutoField.java`, written for RED and mirrored for BLUE (the field is symmetric about its centre). Defaults come from the manual's drawings (TU10): measure on a real field and adjust. The robot drives along `LANE_X` (x = -40 in. for RED) to keep clear of the partner's start spot and the HIVE legs.
+- **Field spots** are in `AutoField.java`, written for RED and mirrored for BLUE (the field is symmetric about its centre). Defaults come from the manual's drawings (TU10), with the start state (upward CELL on the loading-zone side) as checked on our field: measure on a real field and adjust. The robot drives along `LANE_X` (x = -40 in. for RED) to keep clear of the partner's start spot and the HIVE legs.
 - **Tip detection:** the turret points the camera at the downward CELL; `Watched CELL height` shows its tags' height above the camera. Up is about 43 in., down about 21 in.; above `TIP_HEIGHT_IN` (32) for 0.25 s counts as tipped. Check the numbers on the field.
 - **Shooting:** no ball sensor, so it feeds for `FEED_SEC` (3 s) of READY time, with the intake helping (`INTAKE_WHILE_SHOOTING`).
 - **No odometry:** it leaves the wall by time; Auto 1 still shoots with the camera.
