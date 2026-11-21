@@ -266,7 +266,7 @@ public abstract class BiobuzzAuto extends LinearOpMode {
         robot.turret.update();
         if (autoAim) {
             double distance = robot.turret.getShotDistanceIn();
-            if (distance > 0) spinRpm = ShotTable.rpm(distance);
+            if (distance > 0) spinRpm = ShotTable.rpm(robot.turret.getRpmDistanceIn());
         }
         robot.flywheel.setTargetRPM(spinRpm);
         robot.intake.setPower(intakePower); // shoot() overrides this right after

@@ -88,6 +88,16 @@ public class TurretController {
     public static double CAMERA_HEIGHT_IN = 25.0 / 2.54;
     // Scales the shot lead for robot motion: >1 if moving shots land behind the goal, <1 if ahead.
     public static double LEAD_GAIN = 1.0;
+    // --- Angled shots ---
+    // Seen at an angle, the camera reads the CELL further away than it is, so angled shots (TeleOp
+    // from the side, the Auto 2 fallback) came out too hard and bounced off the back of the CELL.
+    // Straight-on shots (line of sight along the field's Y axis, like Auto 1 from C1) are left
+    // exactly as they are. Beyond ANGLED_SHOT_DEADZONE_DEG off that axis the distance used for the
+    // RPM is shortened, up to ANGLED_SHOT_SHORTEN (fraction) for a shot straight from the side.
+    // Needs odometry (for the robot's field heading); without it nothing changes.
+    // Still too hard from the side: raise ANGLED_SHOT_SHORTEN. Now too soft: lower it.
+    public static double ANGLED_SHOT_DEADZONE_DEG = 15.0;
+    public static double ANGLED_SHOT_SHORTEN = 0.2;
 
     // --- Goal memory: keep aiming with odometry when the camera can't see the goal ---
     // Each camera sighting stores the goal's position in odometry coordinates. While the tags are
@@ -580,6 +590,39 @@ public class TurretController {
     /** Horizontal distance to the lead-compensated aim point (in), 0 if unknown. */
     public double getShotDistanceIn() {
         return shotDistanceIn;
+    }
+
+    /**
+     * Distance (in) to look up the flywheel RPM with: the shot distance, shortened for angled
+     * shots (see ANGLED_SHOT_SHORTEN). Equal to getShotDistanceIn() for straight-on shots.
+     */
+    public double getRpmDistanceIn() {
+        if (shotDistanceIn <= 0 || !odometryValid) return shotDistanceIn;
+        return shotDistanceIn * angledShotFactor(offAxisDeg(lineOfSightBearing(odoHeadingDeg, getCurrentAngle())));
+    }
+
+    /** Degrees off straight-on (0 = along the field's Y axis), for telemetry; NaN without odometry. */
+    public double getShotOffAxisDeg() {
+        return odometryValid ? offAxisDeg(lineOfSightBearing(odoHeadingDeg, getCurrentAngle())) : Double.NaN;
+    }
+
+    /** Field bearing (deg, counter-clockwise) the turret looks along. Inverse of turretAngleToPoint. */
+    static double lineOfSightBearing(double robotHeadingDeg, double turretAngleDeg) {
+        return wrap180(robotHeadingDeg - turretSign() * turretAngleDeg);
+    }
+
+    /** 0 when the line of sight runs along the field's Y axis (either way), 90 along X. */
+    static double offAxisDeg(double bearingDeg) {
+        double a = Math.abs(wrap180(bearingDeg - 90));
+        return Math.min(a, 180 - a);
+    }
+
+    /** 1 inside the dead zone, falling linearly to 1 - ANGLED_SHOT_SHORTEN at 90 deg. */
+    static double angledShotFactor(double offAxisDeg) {
+        double span = 90 - ANGLED_SHOT_DEADZONE_DEG;
+        if (offAxisDeg <= ANGLED_SHOT_DEADZONE_DEG || span <= 0) return 1.0;
+        double f = Math.min(1.0, (offAxisDeg - ANGLED_SHOT_DEADZONE_DEG) / span);
+        return 1.0 - ANGLED_SHOT_SHORTEN * f;
     }
 
     /** Horizontal distance to the goal itself (in), 0 if unknown. */

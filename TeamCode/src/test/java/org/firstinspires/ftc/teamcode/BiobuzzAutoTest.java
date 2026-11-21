@@ -133,6 +133,32 @@ public class BiobuzzAutoTest {
         assertTrue(w2.update(true, gap + 0.2 + confirm));
     }
 
+    /** RPM-distance factor for a robot at a RED spot aiming at a CELL (turret pointed at it). */
+    private static double factorAt(double[] robot, double[] cell) {
+        double turret = TurretController.turretAngleToPoint(robot[0], robot[1], robot[2], cell[0], cell[1]);
+        double bearing = TurretController.lineOfSightBearing(robot[2], turret);
+        return TurretController.angledShotFactor(TurretController.offAxisDeg(bearing));
+    }
+
+    @Test
+    public void autoOneShotIsNotChangedButAngledShotsAreSofter() {
+        // Auto 1: straight on from C1, and the same from C6 (Auto 2 after the tip).
+        assertEquals(1.0, factorAt(AutoField.leaveSpot(AutoField.startAtUpCell()), AutoField.startUpCell()), 0);
+        assertEquals(1.0, factorAt(AutoField.startAtDownCell(), AutoField.startDownCell()), 0);
+        // A few degrees off (turret not exactly centred) still changes nothing.
+        assertEquals(1.0, TurretController.angledShotFactor(TurretController.offAxisDeg(90 + 10)), 0);
+        assertEquals(1.0, TurretController.angledShotFactor(TurretController.offAxisDeg(-90 - 10)), 0);
+        // Auto 2 fallback (diagonal) is shortened, a side shot from the alliance wall the most.
+        double fallback = factorAt(AutoField.fallbackShot(), AutoField.startUpCell());
+        assertTrue(fallback < 1.0);
+        double side = factorAt(new double[] {-60, -13.4, 0}, AutoField.startUpCell());
+        assertEquals(1.0 - TurretController.ANGLED_SHOT_SHORTEN, side, 1e-9);
+        assertTrue(side < fallback);
+        // The bearing helper is the inverse of turretAngleToPoint.
+        double turret = TurretController.turretAngleToPoint(0, 0, 30, 10, 10);
+        assertEquals(45, TurretController.lineOfSightBearing(30, turret), 1e-9);
+    }
+
     @Test
     public void startHintNamesTheTile() {
         assertTrue(BiobuzzAuto.startHint(BiobuzzAuto.Plan.HIVE_FRONT, Alliance.RED).contains("C1"));

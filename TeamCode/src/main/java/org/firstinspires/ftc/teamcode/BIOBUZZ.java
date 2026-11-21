@@ -129,8 +129,10 @@ public class BIOBUZZ extends LinearOpMode {
                     // Keep the flywheel at the speed for the current shot distance, so a drive-by
                     // can fire straight away. Hold the last speed while the goal is briefly lost.
                     double distance = robot.turret.getShotDistanceIn();
-                    if (distance > 0) spinRpm = ShotTable.rpm(distance);
+                    if (distance > 0) spinRpm = ShotTable.rpm(robot.turret.getRpmDistanceIn());
                     robot.flywheel.setTargetRPM(spinRpm);
+                    telemetry.addData("Shot distance / for RPM", "%.0f / %.0f in  (%.0f° off straight-on)",
+                            distance, robot.turret.getRpmDistanceIn(), robot.turret.getShotOffAxisDeg());
 
                     String blocker = shotBlocker(robot.turret.isTargetInBlindSpot(), robot.turret.getAimErrorDeg(),
                             robot.flywheel.getCurrentRPM(), spinRpm, robot.turret.goalAgeForShot(), distance);
