@@ -65,6 +65,7 @@ public class OdometryTileTest extends LinearOpMode {
     public void runOpMode() {
         robot.init(hardwareMap, telemetry);
         while (opModeInInit()) {
+            robot.turretInitCheck(gamepad1, telemetry);
             telemetry.addLine("Robot centred on a CORNER tile, facing along an edge,");
             telemetry.addLine("with 2 tiles ahead and 2 tiles to its LEFT.");
             if (robot.localizer == null) telemetry.addData("Odometry OFF", robot.odometryError);

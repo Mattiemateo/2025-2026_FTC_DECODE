@@ -23,6 +23,9 @@ public class BiobuzzRobot {
     public final TurretController turret = new TurretController();
     public Localizer localizer;
     public String odometryError;
+    // Share (short press) turns this off, e.g. when a pod is knocked loose: the localizer keeps
+    // running, but nothing uses it (no line hold, goal memory, shot lead or odometry aim).
+    public boolean odometryEnabled = true;
 
     private Pose lastPose;
     private long lastPoseNanos;
@@ -78,6 +81,20 @@ public class BiobuzzRobot {
         return lowest;
     }
 
+    /**
+     * During INIT: show where the turret thinks it is, and re-zero it while Options is held (turret
+     * centred by hand). The zero is kept between OpModes while the robot stays powered.
+     */
+    public void turretInitCheck(Gamepad gamepad, Telemetry telemetry) {
+        if (gamepad.options) turret.rezeroHere();
+        double angle = turret.getCurrentAngle();
+        telemetry.addData("Turret", "%.0f° from centre%s", angle,
+                gamepad.options ? "  (re-zeroed here)" : "");
+        if (Math.abs(angle) > 5) {
+            telemetry.addLine("!! Turret not at centre: centre it by hand, or if it IS centred, hold Options to re-zero.");
+        }
+    }
+
     /** During INIT: Circle = RED, Cross = BLUE. */
     public static void selectAlliance(Gamepad gamepad) {
         if (gamepad.circle) TurretController.ALLIANCE = TurretController.Alliance.RED;
@@ -99,6 +116,7 @@ public class BiobuzzRobot {
     public Pose updateOdometry() {
         if (localizer == null) {
             turret.setRobotVelocity(0, 0);
+            turret.clearOdometryPose();
             return null;
         }
         Pose pose;
@@ -109,6 +127,7 @@ public class BiobuzzRobot {
             localizer = null; // untuned or broken odometry: keep driving, just no lead / field aim
             odometryError = e.getMessage();
             turret.setRobotVelocity(0, 0);
+            turret.clearOdometryPose();
             return null;
         }
         long now = System.nanoTime();
@@ -126,8 +145,24 @@ public class BiobuzzRobot {
             lastPose = pose;
             lastPoseNanos = now;
         }
+        if (!odometryEnabled) {
+            turret.setRobotVelocity(0, 0);
+            turret.clearOdometryPose();
+            return null;
+        }
         turret.setRobotVelocity(vForward, vLeft);
+        turret.setOdometryPose(pose.x(), pose.y(), Math.toDegrees(pose.heading()));
         return pose;
+    }
+
+    /** Robot-frame forward speed from odometry (in/s). */
+    public double velocityForward() {
+        return vForward;
+    }
+
+    /** Robot-frame left speed from odometry (in/s). */
+    public double velocityLeft() {
+        return vLeft;
     }
 
     /** Field-frame displacement over dt turned into {forward, left} speed in the robot frame. */

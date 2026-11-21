@@ -12,14 +12,24 @@ package org.firstinspires.ftc.teamcode;
  */
 public final class ShotTable {
     // {horizontal distance (in), flywheel RPM (measured), flight time (s)}
-    // Measured on the mock CELL (tags 123 cm high), 2026-11-08. Below ~45 in the camera loses
-    // the tags at its 35 deg tilt. Flight times are guesses until measured on video.
+    // Measured 2026-11-20, robot at an angle to the goal ("diagonal"), tape distances in cm
+    // converted to inches. Head-on shots agreed within 50 RPM. Flight times are guesses
+    // (0.30 s + 3 ms per inch) until measured on video.
     public static double[][] ROWS = {
-        {42.0, 1850.0, 0.40},
-        {58.0, 2000.0, 0.45},
-        {70.0, 2150.0, 0.50},
-        {80.0, 2300.0, 0.55},
+        {27.6, 1700.0, 0.38}, //  70 cm
+        {31.5, 1750.0, 0.39}, //  80 cm
+        {35.4, 1775.0, 0.41}, //  90 cm
+        {39.4, 1800.0, 0.42}, // 100 cm
+        {47.2, 1900.0, 0.44}, // 120 cm
+        {59.1, 2000.0, 0.48}, // 150 cm
+        {70.9, 2100.0, 0.51}, // 180 cm
+        {82.7, 2150.0, 0.55}, // 210 cm
     };
+    // Shifts every shot speed (table and manual DEFAULT_RPM) up or down, e.g. -50 when balls
+    // bounce off the back wall of the CELL. Set with D-pad left/right in BIOBUZZ; kept until the
+    // robot app restarts. Once a value works, fold it into ROWS and set this back to 0.
+    public static double RPM_TRIM = 0.0;
+    public static double RPM_TRIM_STEP = 25.0;
     // How far beyond the first/last row auto-fire is still allowed.
     public static double INRANGE_MARGIN_IN = 6.0;
 
@@ -30,7 +40,7 @@ public final class ShotTable {
     }
 
     public static double rpm(double distanceIn) {
-        return interpolate(ROWS, RPM, distanceIn);
+        return interpolate(ROWS, RPM, distanceIn) + RPM_TRIM;
     }
 
     public static double flightTime(double distanceIn) {

@@ -35,6 +35,17 @@ public class TurretController {
     // Travel limits, 0 = straight ahead, clockwise positive. The cables allow 180 deg CCW and
     // 120 deg CW; these keep a 10 deg margin. Right side of the robot = +90, left side = -90.
     public static double MIN_ANGLE = -170.0, MAX_ANGLE = 110.0;
+    // Near a limit the turret slows down, so it can't overshoot into the cables.
+    public static double LIMIT_SLOW_ZONE_DEG = 25.0;
+    public static double LIMIT_ZONE_POWER = 0.3; // auto-aim / hold power cap in the slow zone
+    public static double LIMIT_ZONE_SPEED_DEG_PER_SEC = 30.0; // bumper speed in the slow zone
+    // Past a limit by more than this: every command is overridden and the turret is driven back.
+    public static double OVERTRAVEL_DEG = 3.0;
+
+    // Encoder count of "turret centred". The hub keeps counting as long as the robot is powered
+    // (also when the turret is turned by hand), so this zero is captured once after power-up and
+    // kept for every later OpMode. Hold Options during INIT to re-zero (turret centred by hand).
+    private static Integer zeroTicks = null;
     public static double TURRET_MAX_POWER = 0.3;
     // Power used while a turret button is held; on release the turret holds where it stopped.
     public static double MANUAL_SPEED_DEG_PER_SEC = 80.0;
@@ -76,7 +87,16 @@ public class TurretController {
     public static double CAMERA_PITCH_DEG = 35.0;
     public static double CAMERA_HEIGHT_IN = 25.0 / 2.54;
     // Scales the shot lead for robot motion: >1 if moving shots land behind the goal, <1 if ahead.
-    public static double LEAD_GAIN = 1.0; // Enable/disable IMU-based search when target is lost
+    public static double LEAD_GAIN = 1.0;
+
+    // --- Goal memory: keep aiming with odometry when the camera can't see the goal ---
+    // Each camera sighting stores the goal's position in odometry coordinates. While the tags are
+    // out of view (too close, outside the camera's view, blocked) the turret aims at that point.
+    public static boolean GOAL_MEMORY_ENABLED = true;
+    // Auto-fire may use the remembered goal for this long after the last sighting.
+    public static double GOAL_MEMORY_FIRE_SEC = 15.0;
+    // A sighting this far from the remembered goal replaces it (e.g. the HIVE tipped) instead of blending.
+    public static double GOAL_MEMORY_JUMP_IN = 12.0; // Enable/disable IMU-based search when target is lost
     public int LIMELIGHT_PIPELINE = 1; // this should probably stay like this
 
     // --- State ---
@@ -94,6 +114,12 @@ public class TurretController {
     private double commandedAngle = 0.0; // where the turret is actually being driven (within limits)
     private boolean targetInBlindSpot = false; // goal direction is behind the cable limits
     private long lastFixNanos = -1;
+    private boolean odometryValid = false;
+    private double odoX, odoY, odoHeadingDeg; // odometry pose this loop (inches, degrees CCW)
+    private boolean goalMemoryValid = false;
+    private double goalMemX, goalMemY; // remembered goal, odometry coordinates (inches)
+    private long goalMemNanos = -1;
+    private boolean aimingFromMemory = false;
     private boolean fieldAimValid = false;
     private double fieldAimAngle = 0.0;
     private long lastFrameNanos = -1;
@@ -101,6 +127,10 @@ public class TurretController {
     private final long[] historyNanos = new long[HISTORY_SIZE];
     private final double[] historyHeading = new double[HISTORY_SIZE];
     private final double[] historyTurret = new double[HISTORY_SIZE];
+    private final double[] historyOdoX = new double[HISTORY_SIZE];
+    private final double[] historyOdoY = new double[HISTORY_SIZE];
+    private final double[] historyOdoHeading = new double[HISTORY_SIZE];
+    private final boolean[] historyOdoValid = new boolean[HISTORY_SIZE];
     private int historyIndex = 0;
     private int historyCount = 0;
     private double lastKnownDistance = 0.0;
@@ -130,7 +160,10 @@ public class TurretController {
             telemetry.addData("IMU", "Initialized successfully");
 
             turretMotor = hardwareMap.get(DcMotorEx.class, "turret"); // port 0 Expansion hub
-            turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            turretMotor.setPower(0);
+            turretMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            if (zeroTicks == null) zeroTicks = turretMotor.getCurrentPosition(); // first OpMode since power-up
+            manualTargetAngle = clampAngle(getCurrentAngle()); // hold where it is, don't swing at Start
             turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             turretMotor.setPositionPIDFCoefficients(POSITION_P);
             if (USE_CUSTOM_VELOCITY_PIDF) {
@@ -184,7 +217,21 @@ public class TurretController {
         } else {
             updateManualControl();
         }
+        enforceLimits();
         updateTelemetry();
+    }
+
+    /** Last line of defence: past a limit, override every command and drive back inside. */
+    private void enforceLimits() {
+        double angle = getCurrentAngle();
+        if (angle > MAX_ANGLE + OVERTRAVEL_DEG || angle < MIN_ANGLE - OVERTRAVEL_DEG) {
+            double inside = clampAngle(angle);
+            manualTargetAngle = inside;
+            turretMotor.setTargetPosition(ticksFor(inside));
+            setMode(DcMotor.RunMode.RUN_TO_POSITION);
+            turretMotor.setPower(LIMIT_ZONE_POWER);
+            telemetry.addData("TURRET PAST LIMIT", "%.0f° - driving back to %.0f°", angle, inside);
+        }
     }
 
     private void updateAutoAim() {
@@ -210,9 +257,13 @@ public class TurretController {
                 targetBearingField = targetWasVisible
                     ? wrap180(targetBearingField + VISION_FILTER * wrap180(measured - targetBearingField))
                     : measured;
+                if (then[5] > 0 && fix.horizontalIn > 0) {
+                    rememberGoal(goalFromSighting(then[2], then[3], then[4], then[1], tx, fix.horizontalIn));
+                }
             }
             targetWasVisible = true;
             targetLostTimer.reset();
+            aimingFromMemory = false;
             aimAtBearing(robotHeading);
             lastClusterFix = fix;
             if (fix.distanceM > 0) {
@@ -220,15 +271,22 @@ public class TurretController {
                 goalDistanceIn = fix.horizontalIn;
                 lastFixNanos = System.nanoTime();
             }
+        } else if (GOAL_MEMORY_ENABLED && goalMemoryValid && odometryValid) {
+            // TARGET NOT IN VIEW: aim at the remembered goal using odometry.
+            aimingFromMemory = true;
+            isSearching = false;
+            aimAtRememberedGoal(robotHeading);
         } else if (
             targetWasVisible &&
             targetLostTimer.seconds() < TARGET_LOST_TIMEOUT &&
             IMU_SEARCH_ENABLED
         ) {
             // TARGET LOST: keep pointing at the last known field bearing using the IMU only.
+            aimingFromMemory = false;
             aimAtBearing(robotHeading);
             isSearching = false;
         } else {
+            aimingFromMemory = false;
             // TARGET LOST: IMU tracking disabled or timeout expired
             // Start oscillating search pattern
             targetWasVisible = false;
@@ -289,11 +347,9 @@ public class TurretController {
 
             if (shouldMove) {
                 // Move to target position with reduced power
-                int targetPositionTicks = (int) (targetAngle *
-                    TICKS_PER_DEGREE);
-                turretMotor.setTargetPosition(targetPositionTicks);
+                turretMotor.setTargetPosition(ticksFor(clampAngle(targetAngle)));
                 setMode(DcMotor.RunMode.RUN_TO_POSITION);
-                turretMotor.setPower(SEARCH_POWER); // Use slower search power
+                turretMotor.setPower(limitZonePower(targetAngle, SEARCH_POWER));
             }
         }
     }
@@ -314,6 +370,87 @@ public class TurretController {
         fieldAimValid = false;
     }
 
+    /** Odometry pose for this loop (inches, degrees counter-clockwise). Call before update(). */
+    public void setOdometryPose(double x, double y, double headingDeg) {
+        odometryValid = true;
+        odoX = x;
+        odoY = y;
+        odoHeadingDeg = headingDeg;
+    }
+
+    /** No odometry this loop: goal memory can't be used or updated. */
+    public void clearOdometryPose() {
+        odometryValid = false;
+    }
+
+    /** Drop the remembered goal, e.g. after the odometry was re-zeroed. */
+    public void forgetGoal() {
+        goalMemoryValid = false;
+        goalMemNanos = -1;
+    }
+
+    /** Seconds since the remembered goal was last refreshed by the camera; infinite if none. */
+    public double secondsSinceGoalRemembered() {
+        return goalMemoryValid ? (System.nanoTime() - goalMemNanos) / 1e9 : Double.POSITIVE_INFINITY;
+    }
+
+    /**
+     * Age of the goal information the turret is aiming with, for the auto-fire check: the camera's
+     * age while it sees the goal, 0 while aiming at a remembered goal that is still trusted.
+     */
+    public double goalAgeForShot() {
+        if (aimingFromMemory && secondsSinceGoalRemembered() < GOAL_MEMORY_FIRE_SEC) return 0;
+        return secondsSinceGoalSeen();
+    }
+
+    public boolean isAimingFromMemory() {
+        return aimingFromMemory;
+    }
+
+    /**
+     * Goal position in odometry coordinates from one camera sighting: robot pose (x, y, heading
+     * CCW), turret angle and the horizontal angle/distance to the goal at the moment of capture.
+     */
+    static double[] goalFromSighting(double robotX, double robotY, double robotHeadingDeg,
+                                     double turretAngle, double txDeg, double distanceIn) {
+        double[] from = FieldAim.turretPosition(robotX, robotY, robotHeadingDeg);
+        double s = turretSign();
+        double direction = Math.toRadians(robotHeadingDeg - s * (turretAngle + s * txDeg));
+        return new double[] {from[0] + distanceIn * Math.cos(direction), from[1] + distanceIn * Math.sin(direction)};
+    }
+
+    private void rememberGoal(double[] measured) {
+        boolean jump = !goalMemoryValid
+            || Math.hypot(measured[0] - goalMemX, measured[1] - goalMemY) > GOAL_MEMORY_JUMP_IN;
+        if (jump) {
+            goalMemX = measured[0];
+            goalMemY = measured[1];
+        } else {
+            goalMemX += VISION_FILTER * (measured[0] - goalMemX);
+            goalMemY += VISION_FILTER * (measured[1] - goalMemY);
+        }
+        goalMemoryValid = true;
+        goalMemNanos = System.nanoTime();
+    }
+
+    /** Aim at the remembered goal from the odometry pose, with the same shot lead as vision aim. */
+    private void aimAtRememberedGoal(double imuHeading) {
+        double[] from = FieldAim.turretPosition(odoX, odoY, odoHeadingDeg);
+        double leadHeading = odoHeadingDeg + getYawRateDegPerSec() * GYRO_LEAD_SEC;
+        double goalAngle = turretAngleToPoint(from[0], from[1], leadHeading, goalMemX, goalMemY);
+        goalDistanceIn = Math.hypot(goalMemX - from[0], goalMemY - from[1]);
+        double[] lead = leadSolution(goalAngle, goalDistanceIn, robotVForward, robotVLeft, LEAD_GAIN, ShotTable.ROWS);
+        aimTargetAngle = lead[0];
+        shotDistanceIn = lead[1];
+        leadOffsetDeg = wrap180(aimTargetAngle - goalAngle);
+        // Keep the gyro bearing in step, so the camera picks up smoothly when the tags come back.
+        targetBearingField = wrap180(goalAngle - turretSign() * imuHeading);
+        double commanded = commandTurret(aimTargetAngle);
+        turretMotor.setTargetPosition(ticksFor(commanded));
+        setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        turretMotor.setPower(limitZonePower(commanded, AIM_MAX_POWER));
+    }
+
     /** Turret angle that points from the robot at (goalX, goalY). */
     static double turretAngleToPoint(double robotX, double robotY, double robotHeadingDeg,
                                      double goalX, double goalY) {
@@ -322,10 +459,10 @@ public class TurretController {
     }
 
     private void driveToAngle(double angle, double maxPower) {
-        int targetPositionTicks = (int) (commandTurret(angle) * TICKS_PER_DEGREE);
-        turretMotor.setTargetPosition(targetPositionTicks);
+        double commanded = commandTurret(angle);
+        turretMotor.setTargetPosition(ticksFor(commanded));
         setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        turretMotor.setPower(maxPower);
+        turretMotor.setPower(limitZonePower(commanded, maxPower));
     }
 
     /** Gyro-stabilised aim: counter-rotate the turret against the robot's heading (and turn rate). */
@@ -343,10 +480,28 @@ public class TurretController {
             shotDistanceIn = 0;
         }
         leadOffsetDeg = wrap180(aimTargetAngle - goalAngle);
-        int targetPositionTicks = (int) (commandTurret(aimTargetAngle) * TICKS_PER_DEGREE);
-        turretMotor.setTargetPosition(targetPositionTicks);
+        double commanded = commandTurret(aimTargetAngle);
+        turretMotor.setTargetPosition(ticksFor(commanded));
         setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        turretMotor.setPower(AIM_MAX_POWER);
+        turretMotor.setPower(limitZonePower(commanded, AIM_MAX_POWER));
+    }
+
+    /** Encoder target for a turret angle (relative to the saved zero). */
+    private int ticksFor(double angle) {
+        return zeroTicks + (int) Math.round(angle * TICKS_PER_DEGREE);
+    }
+
+    /** Power cap while the target is close to a travel limit, so the turret can't overshoot it. */
+    static double limitZonePower(double targetAngle, double power) {
+        boolean nearLimit = targetAngle > MAX_ANGLE - LIMIT_SLOW_ZONE_DEG
+            || targetAngle < MIN_ANGLE + LIMIT_SLOW_ZONE_DEG;
+        return nearLimit ? Math.min(power, LIMIT_ZONE_POWER) : power;
+    }
+
+    /** Set "turret centred" to where the turret is now (it must be centred by hand). */
+    public void rezeroHere() {
+        zeroTicks = turretMotor.getCurrentPosition();
+        manualTargetAngle = 0;
     }
 
     /**
@@ -481,10 +636,17 @@ public class TurretController {
         historyNanos[historyIndex] = System.nanoTime();
         historyHeading[historyIndex] = heading;
         historyTurret[historyIndex] = turretAngle;
+        historyOdoValid[historyIndex] = odometryValid;
+        historyOdoX[historyIndex] = odoX;
+        historyOdoY[historyIndex] = odoY;
+        historyOdoHeading[historyIndex] = odoHeadingDeg;
         if (historyCount < HISTORY_SIZE) historyCount++;
     }
 
-    /** {heading, turretAngle} recorded closest to (at or before) the given time. */
+    /**
+     * Recorded closest to (at or before) the given time: {IMU heading, turret angle, odometry x,
+     * odometry y, odometry heading, 1 if odometry was valid else 0}.
+     */
     private double[] historyAt(long nanos) {
         int index = historyIndex;
         for (int i = 0; i < historyCount; i++) {
@@ -492,7 +654,18 @@ public class TurretController {
             index = candidate;
             if (historyNanos[candidate] <= nanos) break;
         }
-        return new double[] {historyHeading[index], historyTurret[index]};
+        return new double[] {historyHeading[index], historyTurret[index], historyOdoX[index],
+            historyOdoY[index], historyOdoHeading[index], historyOdoValid[index] ? 1 : 0};
+    }
+
+    /** Gyro heading, degrees counter-clockwise (for the driving assists). */
+    public double imuHeadingDeg() {
+        return getRobotHeading();
+    }
+
+    /** Gyro turn rate, degrees per second counter-clockwise (for the driving assists). */
+    public double imuYawRateDegPerSec() {
+        return getYawRateDegPerSec();
     }
 
     private double getYawRateDegPerSec() {
@@ -628,10 +801,14 @@ public class TurretController {
         }
     }
 
-    /** Jog speed in deg/s, or 0 when not jogging or when the travel limit is reached. */
+    /** Jog speed in deg/s: slower close to a limit, 0 when not jogging or at the limit. */
     static double manualVelocity(double direction, double currentAngle) {
-        if (direction > 0 && currentAngle < MAX_ANGLE) return MANUAL_SPEED_DEG_PER_SEC;
-        if (direction < 0 && currentAngle > MIN_ANGLE) return -MANUAL_SPEED_DEG_PER_SEC;
+        if (direction > 0 && currentAngle < MAX_ANGLE) {
+            return currentAngle > MAX_ANGLE - LIMIT_SLOW_ZONE_DEG ? LIMIT_ZONE_SPEED_DEG_PER_SEC : MANUAL_SPEED_DEG_PER_SEC;
+        }
+        if (direction < 0 && currentAngle > MIN_ANGLE) {
+            return currentAngle < MIN_ANGLE + LIMIT_SLOW_ZONE_DEG ? -LIMIT_ZONE_SPEED_DEG_PER_SEC : -MANUAL_SPEED_DEG_PER_SEC;
+        }
         return 0;
     }
 
@@ -641,10 +818,10 @@ public class TurretController {
     }
 
     private void setTargetAngleInternal(double angle) {
-        int targetPositionTicks = (int) (clampAngle(angle) * TICKS_PER_DEGREE);
-        turretMotor.setTargetPosition(targetPositionTicks);
+        double target = clampAngle(angle);
+        turretMotor.setTargetPosition(ticksFor(target));
         setMode(DcMotor.RunMode.RUN_TO_POSITION);
-        turretMotor.setPower(TURRET_MAX_POWER);
+        turretMotor.setPower(limitZonePower(target, TURRET_MAX_POWER));
     }
 
     public void enableAutoAim(boolean enable) {
@@ -684,7 +861,7 @@ public class TurretController {
     }
 
     public double getCurrentAngle() {
-        return turretMotor.getCurrentPosition() / TICKS_PER_DEGREE;
+        return (turretMotor.getCurrentPosition() - zeroTicks) / TICKS_PER_DEGREE;
     }
 
     public void setPipeline(int pipeline) {
@@ -727,9 +904,8 @@ public class TurretController {
     }
 
     public void reset() {
-        turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        rezeroHere();
         imu.resetYaw(); // Reset the IMU's yaw when resetting the turret
-        manualTargetAngle = 0;
     }
 
     private void updateTelemetry() {
@@ -750,6 +926,10 @@ public class TurretController {
             telemetry.addData("Aim Bearing / Turret Target", "%.1f° / %.1f°",
                 targetBearingField, aimTargetAngle);
             telemetry.addData("Alliance / Aim Source", "%s / %s", ALLIANCE, AIM_SOURCE);
+            telemetry.addData("Goal memory", goalMemoryValid
+                ? String.format("x %.0f, y %.0f in (seen %.1f s ago)%s", goalMemX, goalMemY,
+                    secondsSinceGoalRemembered(), odometryValid ? "" : " - odometry OFF")
+                : (odometryValid ? "none yet" : "off (no odometry)"));
         }
         if (autoAimEnabled && limelight != null) {
             LLResult latest = limelight.getLatestResult();
@@ -784,7 +964,9 @@ public class TurretController {
         }
         if (autoAimEnabled && AIM_SOURCE == AimSource.LIMELIGHT) {
             String status;
-            if (isTracking()) {
+            if (aimingFromMemory) {
+                status = "Odometry (remembered goal)";
+            } else if (isTracking()) {
                 status = targetLostTimer.seconds() > 0.1
                     ? "IMU Tracking"
                     : "Vision Locked";

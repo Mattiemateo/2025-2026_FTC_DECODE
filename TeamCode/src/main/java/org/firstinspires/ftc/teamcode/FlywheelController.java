@@ -10,7 +10,8 @@ public class FlywheelController {
     public static double MOTOR_TICKS_PER_REV = 52.0;
     // Flywheel revolutions per motor revolution. 2026-11-08: geared up 2:1 for more flywheel speed.
     public static double GEAR_RATIO = 2.0;
-    public static double DEFAULT_RPM = 2000.0;
+    // Manual shooting (auto-aim off): 1800 = the shot-table speed for about 1 m (100 cm).
+    public static double DEFAULT_RPM = 1800.0;
     public static double MAX_RPM = 6000.0; // flywheel
     public static double FLYWHEEL_P = 9.0;
     public static double FLYWHEEL_I = 0.5;

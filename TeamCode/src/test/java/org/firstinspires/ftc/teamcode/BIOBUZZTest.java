@@ -185,6 +185,18 @@ public class BIOBUZZTest {
     }
 
     @Test
+    public void rpmTrimShiftsTableAndManualShots() {
+        double table = ShotTable.rpm(50), manual = BIOBUZZ.manualRpm();
+        try {
+            ShotTable.RPM_TRIM = -50;
+            assertEquals(table - 50, ShotTable.rpm(50), 1e-9);
+            assertEquals(manual - 50, BIOBUZZ.manualRpm(), 1e-9);
+        } finally {
+            ShotTable.RPM_TRIM = 0;
+        }
+    }
+
+    @Test
     public void autoFireWaitsForEveryCheck() {
         double[] row = ShotTable.ROWS[0];
         double d = row[0], rpm = row[1];
@@ -257,6 +269,127 @@ public class BIOBUZZTest {
         // On target: no power.
         c = OdometryTileTest.driveCommand(48, 0, 0, 48, 0, 0);
         assertEquals(0, Math.hypot(c[0], Math.hypot(c[1], c[2])), 1e-9);
+    }
+
+    @Test
+    public void rememberedGoalIsWhereTheCameraSawIt() {
+        boolean original = TurretController.TURRET_POSITIVE_IS_CLOCKWISE;
+        try {
+            TurretController.TURRET_POSITIVE_IS_CLOCKWISE = true;
+            // Robot at the origin facing +x, turret turned 90 deg clockwise (right), goal straight
+            // ahead of the camera 50 in away: the goal is 50 in to the robot's right (-y).
+            double[] goal = TurretController.goalFromSighting(0, 0, 0, 90, 0, 50);
+            assertEquals(0, goal[0], 1e-9);
+            assertEquals(-50, goal[1], 1e-9);
+            // Target 10 deg right of the camera's centre: turret direction plus 10 deg clockwise.
+            goal = TurretController.goalFromSighting(0, 0, 0, 0, 10, 50);
+            assertEquals(50 * Math.cos(Math.toRadians(-10)), goal[0], 1e-9);
+            assertEquals(50 * Math.sin(Math.toRadians(-10)), goal[1], 1e-9);
+            // From any pose, aiming at the remembered point gives back the sighting's turret angle.
+            double[][] poses = {{10, 20, 30}, {-40, 5, 170}, {0, 0, -90}};
+            for (double[] p : poses) {
+                double[] g = TurretController.goalFromSighting(p[0], p[1], p[2], -60, 7, 55);
+                assertEquals(-53, TurretController.turretAngleToPoint(p[0], p[1], p[2], g[0], g[1]), 1e-9);
+            }
+        } finally {
+            TurretController.TURRET_POSITIVE_IS_CLOCKWISE = original;
+        }
+    }
+
+    @Test
+    public void stickShapingSnapsNearlyStraightPushesToStraight() {
+        // 5 deg off straight forward: sideways part removed, full speed kept.
+        double[] s = DriveAssist.shapeTranslation(Math.cos(Math.toRadians(5)), Math.sin(Math.toRadians(5)));
+        assertEquals(1.0, s[0], 1e-9);
+        assertEquals(0, s[1], 1e-9);
+        assertEquals(DriveAssist.Snap.FORWARD_BACK, DriveAssist.snapOf(s[2]));
+        // 5 deg off straight right: forward part removed.
+        s = DriveAssist.shapeTranslation(Math.sin(Math.toRadians(5)), Math.cos(Math.toRadians(5)));
+        assertEquals(0, s[0], 1e-9);
+        assertEquals(1.0, s[1], 1e-9);
+        assertEquals(DriveAssist.Snap.LEFT_RIGHT, DriveAssist.snapOf(s[2]));
+        // A real diagonal stays a diagonal.
+        s = DriveAssist.shapeTranslation(0.7, 0.7);
+        assertEquals(s[0], s[1], 1e-9);
+        assertEquals(DriveAssist.Snap.NONE, DriveAssist.snapOf(s[2]));
+        // Dead zone and finer control near the centre.
+        assertEquals(0, DriveAssist.shapeTranslation(0.03, 0.01)[0], 1e-9);
+        assertTrue(DriveAssist.shapeAxis(0.3) < 0.3);
+        assertEquals(1.0, DriveAssist.shapeAxis(1.0), 1e-9);
+    }
+
+    @Test
+    public void fieldRelativeTurnsTheStickIntoTheRobotFrame() {
+        // Robot turned 90 deg left (CCW) from the drivers' forward: stick forward = robot's right.
+        double[] r = DriveAssist.driverToRobot(1, 0, 90);
+        assertEquals(0, r[0], 1e-9);
+        assertEquals(1, r[1], 1e-9);
+        // Robot facing the drivers (180): stick forward = robot backward.
+        r = DriveAssist.driverToRobot(1, 0, 180);
+        assertEquals(-1, r[0], 1e-9);
+        assertEquals(0, r[1], 1e-9);
+    }
+
+    @Test
+    public void headingHoldAndLineHoldPushBack() {
+        // Robot rotated 10 deg counter-clockwise past its target: turn clockwise (positive).
+        assertTrue(DriveAssist.headingHoldTurn(0, 10, 0) > 0);
+        assertTrue(DriveAssist.headingHoldTurn(0, -10, 0) < 0);
+        // Driving along +x, drifted 2 in to the left (+y): correction points right (-y).
+        double[] c = DriveAssist.lineCorrection(10, 2, 0, 0, 1, 0);
+        assertEquals(0, c[0], 1e-9);
+        assertTrue(c[1] < 0);
+        assertEquals(2, c[2], 1e-9);
+        // On the line but sliding left: also push right.
+        assertTrue(DriveAssist.lineCorrection(10, 0, 30, 5, 1, 0)[1] < 0);
+    }
+
+    @Test
+    public void driveAssistHoldsTheLineWhileDrivingStraight() {
+        DriveAssist assist = new DriveAssist();
+        // Facing +x, stick pushed forward with a little right, robot drifted 3 in left.
+        assist.update(1.0, 0, 0, 0, 0, true, 0, 0, 0, 0, 0); // line starts at the origin
+        double[] cmd = assist.update(1.0, 0.05, 0, 0, 0, true, 20, 3, 0, 40, 0);
+        assertTrue(cmd[0] > 0); // still driving forward
+        assertTrue(cmd[1] > 0); // strafing right, back toward the line
+        // Assists off: the stick goes straight through.
+        assist.assistsOn = false;
+        cmd = assist.update(0.5, 0.05, 0, 0, 0, true, 20, 3, 0, 40, 0);
+        assertEquals(0.5, cmd[0], 1e-9);
+        assertEquals(0.05, cmd[1], 1e-9);
+    }
+
+    @Test
+    public void calibrationRowIsReadyToPasteIntoTheShotTable() {
+        assertEquals("{58.0, 2013, 0.45},", ShotCalibration.tableRow(58, 2012.6, 0.45));
+    }
+
+    @Test
+    public void turretSlowsDownNearItsLimits() {
+        double max = TurretController.MAX_ANGLE, min = TurretController.MIN_ANGLE;
+        double zone = TurretController.LIMIT_SLOW_ZONE_DEG;
+        // Auto-aim power is capped when the target is close to a limit, not in the middle.
+        assertEquals(0.8, TurretController.limitZonePower(0, 0.8), 1e-9);
+        assertEquals(TurretController.LIMIT_ZONE_POWER, TurretController.limitZonePower(max - 5, 0.8), 1e-9);
+        assertEquals(TurretController.LIMIT_ZONE_POWER, TurretController.limitZonePower(min + 5, 0.8), 1e-9);
+        // Bumpers: slower toward a nearby limit, full speed away from it, nothing past it.
+        assertEquals(TurretController.LIMIT_ZONE_SPEED_DEG_PER_SEC, TurretController.manualVelocity(1, max - zone / 2), 1e-9);
+        assertEquals(-TurretController.MANUAL_SPEED_DEG_PER_SEC, TurretController.manualVelocity(-1, max - zone / 2), 1e-9);
+        assertEquals(-TurretController.LIMIT_ZONE_SPEED_DEG_PER_SEC, TurretController.manualVelocity(-1, min + zone / 2), 1e-9);
+        assertEquals(0, TurretController.manualVelocity(1, max + 1), 1e-9);
+        assertEquals(0, TurretController.manualVelocity(-1, min - 1), 1e-9);
+    }
+
+    @Test
+    public void heldDpadRepeatsAfterAShortPause() {
+        ShotCalibration.Repeat r = new ShotCalibration.Repeat();
+        assertTrue(r.fires(true, 0.0)); // press = one step
+        assertFalse(r.fires(true, 0.2)); // still waiting for the repeat delay
+        assertTrue(r.fires(true, 0.45)); // repeating
+        assertFalse(r.fires(true, 0.5));
+        assertTrue(r.fires(true, 0.56));
+        assertFalse(r.fires(false, 0.6)); // released
+        assertTrue(r.fires(true, 0.7)); // new press
     }
 
     @Test(expected = IllegalArgumentException.class)
